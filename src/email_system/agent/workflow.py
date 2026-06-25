@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import time
-
+from email_system.memory import InMemoryLongTermMemory, ShortTermMemory
+from email_system.memory.long_term import LongTermMemory
 from email_system.models import LLMClient
 from email_system.schemas import ActionItem, AgentOutput, Confidence, Email, Entities
 from email_system.skills import (
@@ -11,45 +11,46 @@ from email_system.skills import (
     SummarizeEmailSkill,
 )
 
+from .nodes import HumanReviewPolicyNode, LoadMemoryNode, SaveMemoryNode, SkillNode, TimedNode
+from .state import WorkflowState
+
 
 class EmailAgentWorkflow:
-    def __init__(self, llm: LLMClient) -> None:
+    def __init__(
+        self,
+        llm: LLMClient,
+        *,
+        short_term_memory: ShortTermMemory | None = None,
+        long_term_memory: LongTermMemory | None = None,
+    ) -> None:
         self.llm = llm
-        self.classifier = ClassifyEmailSkill()
-        self.summarizer = SummarizeEmailSkill()
-        self.action_extractor = ExtractActionItemsSkill()
-        self.reply_drafter = DraftReplySkill()
+        self.short_term_memory = short_term_memory or ShortTermMemory()
+        self.long_term_memory = long_term_memory if long_term_memory is not None else InMemoryLongTermMemory()
+        self.nodes = [
+            TimedNode(LoadMemoryNode(self.short_term_memory, self.long_term_memory)),
+            TimedNode(SkillNode(ClassifyEmailSkill(), self.llm)),
+            TimedNode(SkillNode(SummarizeEmailSkill(), self.llm)),
+            TimedNode(SkillNode(ExtractActionItemsSkill(), self.llm)),
+            TimedNode(SkillNode(DraftReplySkill(), self.llm)),
+            TimedNode(HumanReviewPolicyNode()),
+            TimedNode(SaveMemoryNode(self.short_term_memory, self.long_term_memory)),
+        ]
 
     def run(self, email: Email) -> AgentOutput:
-        context: dict = {}
-        timings_ms: dict[str, float] = {}
+        state = WorkflowState(email=email)
+        for node in self.nodes:
+            node.run(state)
+        return self._build_output(state)
 
-        classify = self._timed(self.classifier.name, timings_ms, self.classifier.run, email, context, self.llm)
-        context.update(classify=classify)
-
-        summary = self._timed(self.summarizer.name, timings_ms, self.summarizer.run, email, context, self.llm)
-        context.update(summary=summary)
-
-        actions = self._timed(
-            self.action_extractor.name,
-            timings_ms,
-            self.action_extractor.run,
-            email,
-            context,
-            self.llm,
-        )
-        context.update(actions=actions)
-
-        reply = self._timed(self.reply_drafter.name, timings_ms, self.reply_drafter.run, email, context, self.llm)
-
+    def _build_output(self, state: WorkflowState) -> AgentOutput:
+        classify = state.outputs.get("classify_email", {})
+        summary = state.outputs.get("summarize_email", {})
+        actions = state.outputs.get("extract_action_items", {})
+        reply = state.outputs.get("draft_reply", {})
+        review = state.outputs.get("human_review_policy", {})
         priority = classify.get("priority", "normal")
-        skill_errors = self._skill_errors(
-            classify_email=classify,
-            summarize_email=summary,
-            extract_action_items=actions,
-        )
         return AgentOutput(
-            email_id=email.email_id,
+            email_id=state.email.email_id,
             category=classify.get("category", "other"),
             priority=priority,
             summary=summary.get("summary", ""),
@@ -60,16 +61,9 @@ class EmailAgentWorkflow:
                 category=float(classify.get("confidence", 0.0)),
                 summary=float(summary.get("confidence", 0.0)),
             ),
-            requires_human_review=priority in {"high", "urgent"},
-            timings_ms=timings_ms,
-            skill_errors=skill_errors,
+            requires_human_review=review.get("requires_human_review", priority in {"high", "urgent"}),
+            timings_ms=state.timings_ms,
+            skill_errors=review.get("skill_errors", {}),
+            memory=state.outputs.get("load_memory", {}),
+            workflow_trace=[event.to_dict() for event in state.trace],
         )
-
-    def _skill_errors(self, **outputs: dict) -> dict[str, str]:
-        return {name: str(output["parse_error"]) for name, output in outputs.items() if output.get("parse_error")}
-
-    def _timed(self, name: str, timings_ms: dict[str, float], fn, *args):
-        start = time.perf_counter()
-        output = fn(*args)
-        timings_ms[name] = (time.perf_counter() - start) * 1000
-        return output

@@ -38,6 +38,8 @@ class AgentOutput:
     requires_human_review: bool = False
     timings_ms: dict[str, float] = field(default_factory=dict)
     skill_errors: dict[str, str] = field(default_factory=dict)
+    memory: dict[str, Any] = field(default_factory=dict)
+    workflow_trace: list[dict[str, Any]] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

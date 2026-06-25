@@ -13,7 +13,8 @@ The repository now contains a minimal workflow skeleton:
 - local vLLM backend for `models/Qwen3-4B`
 - local transformers backend for debugging fallback
 - classify, summarize, action-item, and reply-draft skills
-- sequential agent workflow
+- node-based agent workflow with execution trace
+- short-term thread memory and local long-term memory stores
 - sample JSONL evaluation set
 - classification and latency metrics
 - runnable agent and eval scripts
@@ -98,3 +99,19 @@ nvidia-smi
 ```
 
 If parse errors are high, try increasing task `max_tokens`, reducing prompt size, or inspecting `outputs/runs/<run>/predictions.jsonl` for `skill_errors`.
+
+## Workflow And Memory
+
+The agent now runs as a node-based workflow:
+
+```text
+load_memory
+  -> classify_email
+  -> summarize_email
+  -> extract_action_items
+  -> draft_reply
+  -> human_review_policy
+  -> save_memory
+```
+
+Each prediction includes `workflow_trace`, `timings_ms`, and a `memory` snapshot. Short-term memory keeps recent context by `thread_id` inside the running process. Long-term memory currently supports an in-memory store for tests and an append-only JSONL store for local persistence.
