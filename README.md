@@ -126,3 +126,59 @@ Install optional LangGraph/MCP workflow dependencies:
 ```bash
 pip install -e '.[agent]'
 ```
+
+## Gmail Trial
+
+Gmail integration uses the official Gmail API OAuth desktop flow. Keep credentials outside git:
+
+```text
+secrets/gmail_credentials.json
+ data/auth/gmail_token.json
+```
+
+Setup:
+
+1. Enable the Gmail API in a Google Cloud project.
+2. Configure the OAuth consent screen.
+3. Create an OAuth Client ID with application type `Desktop app`.
+4. Download the client JSON to `secrets/gmail_credentials.json`.
+5. Install dependencies:
+
+```bash
+pip install -e '.[gmail]'
+```
+
+Import recent Gmail messages to JSONL:
+
+```bash
+python scripts/import_gmail.py \
+  --credentials secrets/gmail_credentials.json \
+  --token data/auth/gmail_token.json \
+  --query "in:inbox newer_than:30d" \
+  --limit 10 \
+  --output data/eval_sets/gmail_inbox.jsonl
+```
+
+Run the agent directly on Gmail in safe dry-run mode. This reads messages and generates replies, but does not send or create drafts:
+
+```bash
+python scripts/run_gmail_agent.py \
+  --backend mock \
+  --send-mode dry_run \
+  --query "in:inbox newer_than:30d" \
+  --limit 3 \
+  --output outputs/predictions/gmail_predictions.jsonl
+```
+
+Create Gmail drafts instead of sending:
+
+```bash
+python scripts/run_gmail_agent.py \
+  --backend vllm \
+  --model-path models/Qwen3-4B \
+  --send-mode draft \
+  --query "in:inbox newer_than:30d" \
+  --limit 3
+```
+
+Avoid `--send-mode send` until the workflow has been reviewed on your own mailbox; it sends real email.

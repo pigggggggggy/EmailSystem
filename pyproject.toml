@@ -20,6 +20,11 @@ agent = [
   "langgraph>=1.0",
   "mcp>=1.0"
 ]
+gmail = [
+  "google-api-python-client>=2.0",
+  "google-auth-httplib2>=0.2",
+  "google-auth-oauthlib>=1.2"
+]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]

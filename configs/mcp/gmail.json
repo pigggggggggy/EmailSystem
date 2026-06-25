@@ -1,0 +1,9 @@
+{
+  "provider": "gmail_api",
+  "credentials_path": "secrets/gmail_credentials.json",
+  "token_path": "data/auth/gmail_token.json",
+  "default_query": "in:inbox newer_than:30d",
+  "default_send_mode": "dry_run",
+  "safe_send_modes": ["dry_run", "draft"],
+  "dangerous_send_mode": "send"
+}

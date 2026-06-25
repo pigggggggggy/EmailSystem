@@ -233,3 +233,7 @@ data/labels/
 *.bin
 *.pt
 *.pth
+
+# Gmail OAuth credentials and tokens
+/secrets/
+data/auth/

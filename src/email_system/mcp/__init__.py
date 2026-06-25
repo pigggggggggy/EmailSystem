@@ -1,3 +1,3 @@
-from .mail import MailMCPClient, MailMCPResult, NoopMailMCPClient
+from .mail import GmailMailMCPClient, MailMCPClient, MailMCPResult, NoopMailMCPClient
 
-__all__ = ["MailMCPClient", "MailMCPResult", "NoopMailMCPClient"]
+__all__ = ["GmailMailMCPClient", "MailMCPClient", "MailMCPResult", "NoopMailMCPClient"]
