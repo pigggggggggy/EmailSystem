@@ -1,0 +1,9 @@
+{
+  "backend": "transformers",
+  "model_name_or_path": "models/Qwen3-4B",
+  "device_map": "auto",
+  "torch_dtype": "auto",
+  "max_model_len": 8192,
+  "temperature": 0.0,
+  "max_tokens": 1024
+}

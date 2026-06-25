@@ -220,8 +220,8 @@ __marimo__/
 #data
 datasets/
 
-# model
-models/
+# Local model weights
+/models/
 # EmailSystem runtime artifacts
 outputs/
 data/raw/

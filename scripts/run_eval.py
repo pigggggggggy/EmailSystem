@@ -13,23 +13,35 @@ sys.path.insert(0, str(ROOT / "src"))
 from email_system.agent import EmailAgentWorkflow
 from email_system.evaluation import evaluate_predictions
 from email_system.io import read_emails, read_jsonl, write_jsonl
-from email_system.models import MockLLMClient
+from email_system.models import build_llm_client
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run agent evaluation.")
     parser.add_argument("--input", default="data/eval_sets/sample_emails.jsonl")
     parser.add_argument("--run-dir", default=None)
-    parser.add_argument("--backend", default="mock", choices=["mock"])
+    parser.add_argument("--backend", default="mock", choices=["mock", "transformers"])
+    parser.add_argument("--model-path", default="models/Qwen3-4B")
+    parser.add_argument("--device-map", default="auto")
+    parser.add_argument("--torch-dtype", default="auto", choices=["auto", "float16", "bfloat16", "float32"])
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
-    run_dir = Path(args.run_dir) if args.run_dir else Path("outputs/runs") / datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S_mock")
+    run_dir = Path(args.run_dir) if args.run_dir else Path("outputs/runs") / datetime.now(timezone.utc).strftime(
+        f"%Y%m%d_%H%M%S_{args.backend}"
+    )
     run_dir.mkdir(parents=True, exist_ok=True)
 
-    workflow = EmailAgentWorkflow(MockLLMClient())
+    workflow = EmailAgentWorkflow(
+        build_llm_client(
+            args.backend,
+            model_path=args.model_path,
+            device_map=args.device_map,
+            torch_dtype=args.torch_dtype,
+        )
+    )
     emails = read_emails(args.input)
     predictions = [workflow.run(email).to_dict() for email in emails]
     gold_rows = read_jsonl(args.input)
