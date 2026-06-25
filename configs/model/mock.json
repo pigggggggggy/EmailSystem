@@ -1,0 +1,8 @@
+{
+  "backend": "mock",
+  "model_name_or_path": "mock-qwen3-4b",
+  "max_model_len": 8192,
+  "temperature": 0.2,
+  "top_p": 0.9,
+  "max_tokens": 1024
+}

@@ -222,3 +222,14 @@ datasets/
 
 # model
 models/
+# EmailSystem runtime artifacts
+outputs/
+data/raw/
+data/interim/
+data/processed/
+data/labels/
+*.safetensors
+*.gguf
+*.bin
+*.pt
+*.pth

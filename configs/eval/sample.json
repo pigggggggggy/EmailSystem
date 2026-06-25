@@ -1,0 +1,5 @@
+{
+  "input": "data/eval_sets/sample_emails.jsonl",
+  "backend": "mock",
+  "metrics": ["accuracy", "macro_f1", "latency"]
+}
