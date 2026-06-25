@@ -26,7 +26,7 @@ class WorkflowTest(unittest.TestCase):
         self.assertEqual(output.priority, "urgent")
         self.assertTrue(output.requires_human_review)
         self.assertTrue(output.summary)
-        self.assertIn("classify_email", output.timings_ms)
+        self.assertIn("classify_intent", output.timings_ms)
 
 
 if __name__ == "__main__":

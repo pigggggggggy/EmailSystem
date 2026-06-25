@@ -31,9 +31,9 @@ class WorkflowMemoryTest(unittest.TestCase):
         self.assertEqual(first.memory["short_term"]["email_ids"], [])
         self.assertEqual(second.memory["short_term"]["email_ids"], ["e-1"])
         self.assertGreaterEqual(len(second.memory["long_term"]), 1)
-        self.assertIn("load_memory", second.timings_ms)
-        self.assertEqual(second.workflow_trace[0]["node"], "load_memory")
-        self.assertEqual(second.workflow_trace[-1]["node"], "save_memory")
+        self.assertIn("read_email", second.timings_ms)
+        self.assertEqual(second.workflow_trace[0]["node"], "read_email")
+        self.assertEqual(second.workflow_trace[-1]["node"], "send_reply")
 
 
 if __name__ == "__main__":

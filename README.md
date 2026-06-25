@@ -13,7 +13,7 @@ The repository now contains a minimal workflow skeleton:
 - local vLLM backend for `models/Qwen3-4B`
 - local transformers backend for debugging fallback
 - classify, summarize, action-item, and reply-draft skills
-- node-based agent workflow with execution trace
+- LangGraph-style agent workflow with execution trace
 - short-term thread memory and local long-term memory stores
 - sample JSONL evaluation set
 - classification and latency metrics
@@ -102,16 +102,27 @@ If parse errors are high, try increasing task `max_tokens`, reducing prompt size
 
 ## Workflow And Memory
 
-The agent now runs as a node-based workflow:
+The agent now follows a LangGraph-style workflow inspired by the automatic email agent pattern:
 
 ```text
-load_memory
-  -> classify_email
-  -> summarize_email
-  -> extract_action_items
-  -> draft_reply
-  -> human_review_policy
-  -> save_memory
+START
+  -> read_email
+  -> classify_intent
+  -> bug_tracking | search_documentation
+  -> write_response
+  -> human_review
+  -> send_reply
+  -> END
 ```
 
+When `langgraph` is installed, `EmailAgentWorkflow` compiles this with `StateGraph`. In minimal test environments it falls back to the same graph order locally, so mock tests do not require optional agent dependencies.
+
 Each prediction includes `workflow_trace`, `timings_ms`, and a `memory` snapshot. Short-term memory keeps recent context by `thread_id` inside the running process. Long-term memory currently supports an in-memory store for tests and an append-only JSONL store for local persistence.
+
+The mail interface is modeled after `dicklesworthstone/mcp_agent_mail`, which provides a FastMCP mail-like coordination layer with identities, inbox/outbox, searchable threads, and message sending. The current code uses `NoopMailMCPClient` as a safe local adapter; wire a running MCP Agent Mail server behind `MailMCPClient` when you are ready for real mailbox operations.
+
+Install optional LangGraph/MCP workflow dependencies:
+
+```bash
+pip install -e '.[agent]'
+```

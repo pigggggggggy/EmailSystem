@@ -16,6 +16,10 @@ vllm = [
   "safetensors>=0.4",
   "vllm>=0.5"
 ]
+agent = [
+  "langgraph>=1.0",
+  "mcp>=1.0"
+]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]

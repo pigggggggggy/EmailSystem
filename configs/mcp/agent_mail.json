@@ -1,0 +1,7 @@
+{
+  "provider": "dicklesworthstone/mcp_agent_mail",
+  "transport": "http_fastmcp",
+  "default_port": 8765,
+  "enabled": false,
+  "notes": "Workflow uses NoopMailMCPClient until a running mcp_agent_mail server and auth token are configured."
+}
