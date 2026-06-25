@@ -60,11 +60,19 @@ class TransformersLLMClient:
 
     def _encode_messages(self, messages: list[dict[str, str]]) -> Any:
         if hasattr(self.tokenizer, "apply_chat_template"):
-            return self.tokenizer.apply_chat_template(
-                messages,
-                add_generation_prompt=True,
-                return_tensors="pt",
-            ).to(self.model.device)
+            try:
+                return self.tokenizer.apply_chat_template(
+                    messages,
+                    add_generation_prompt=True,
+                    return_tensors="pt",
+                    enable_thinking=False,
+                ).to(self.model.device)
+            except TypeError:
+                return self.tokenizer.apply_chat_template(
+                    messages,
+                    add_generation_prompt=True,
+                    return_tensors="pt",
+                ).to(self.model.device)
         text = "\n".join(f"{item['role']}: {item['content']}" for item in messages) + "\nassistant:"
         return self.tokenizer(text, return_tensors="pt").input_ids.to(self.model.device)
 

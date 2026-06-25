@@ -61,9 +61,17 @@ class VLLMClient:
 
     def _render_prompt(self, messages: list[dict[str, str]]) -> str:
         if hasattr(self.tokenizer, "apply_chat_template"):
-            return self.tokenizer.apply_chat_template(
-                messages,
-                add_generation_prompt=True,
-                tokenize=False,
-            )
+            try:
+                return self.tokenizer.apply_chat_template(
+                    messages,
+                    add_generation_prompt=True,
+                    tokenize=False,
+                    enable_thinking=False,
+                )
+            except TypeError:
+                return self.tokenizer.apply_chat_template(
+                    messages,
+                    add_generation_prompt=True,
+                    tokenize=False,
+                )
         return "\n".join(f"{item['role']}: {item['content']}" for item in messages) + "\nassistant:"

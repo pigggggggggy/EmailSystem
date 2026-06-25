@@ -5,14 +5,23 @@ import re
 from typing import Any
 
 
+class ModelOutputParseError(ValueError):
+    def __init__(self, message: str, text: str) -> None:
+        super().__init__(message)
+        self.text = text
+
+
 def parse_json_object(text: str) -> dict[str, Any]:
     cleaned = _strip_fence(text.strip())
     try:
         value = json.loads(cleaned)
     except json.JSONDecodeError:
-        value = json.loads(_first_json_object(cleaned))
+        try:
+            value = json.loads(_first_json_object(cleaned))
+        except json.JSONDecodeError as exc:
+            raise ModelOutputParseError(str(exc), text) from exc
     if not isinstance(value, dict):
-        raise ValueError("Expected a JSON object from model output")
+        raise ModelOutputParseError("Expected a JSON object from model output", text)
     return value
 
 
@@ -47,3 +56,10 @@ def _first_json_object(text: str) -> str:
             if depth == 0:
                 return text[start : index + 1]
     raise json.JSONDecodeError("Unclosed JSON object", text, start)
+
+
+def fallback_summary_from_text(text: str, *, max_chars: int = 120) -> str:
+    normalized = " ".join(text.split())
+    if not normalized:
+        return "空邮件内容。"
+    return normalized[:max_chars] + ("..." if len(normalized) > max_chars else "")

@@ -37,6 +37,7 @@ class AgentOutput:
     confidence: Confidence = field(default_factory=Confidence)
     requires_human_review: bool = False
     timings_ms: dict[str, float] = field(default_factory=dict)
+    skill_errors: dict[str, str] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

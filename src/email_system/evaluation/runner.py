@@ -25,9 +25,16 @@ def evaluate_predictions(gold_rows: list[dict], predictions: list[dict]) -> Eval
         y_true.append(category)
         y_pred.append(prediction.get("category", "other"))
 
+    total_skill_outputs = sum(len(prediction.get("timings_ms", {})) for prediction in predictions)
+    total_skill_errors = sum(len(prediction.get("skill_errors", {})) for prediction in predictions)
+    parse_success_rate = (
+        (total_skill_outputs - total_skill_errors) / total_skill_outputs if total_skill_outputs else 1.0
+    )
+
     metrics = {
         "classification": classification_metrics(y_true, y_pred),
         "latency": latency_metrics(predictions),
-        "parse_success_rate": 1.0,
+        "parse_success_rate": parse_success_rate,
+        "parse_errors": total_skill_errors,
     }
     return EvaluationResult(metrics=metrics, predictions=predictions)

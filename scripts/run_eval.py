@@ -74,6 +74,10 @@ def render_report(metrics: dict) -> str:
             f"- Emails: {latency['emails']}",
             f"- Avg end-to-end ms: {latency['avg_end_to_end_ms']:.2f}",
             "",
+            "## Parsing",
+            f"- Parse success rate: {metrics['parse_success_rate']:.3f}",
+            f"- Parse errors: {metrics['parse_errors']}",
+            "",
         ]
     )
 

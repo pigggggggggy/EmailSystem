@@ -85,3 +85,16 @@ python scripts/run_agent.py --backend transformers --model-path models/Qwen3-4B
 ```
 
 The `models/` and `outputs/` directories are ignored by git, so model weights and run artifacts stay out of source control.
+
+## Troubleshooting vLLM JSON Output
+
+If Qwen3 returns empty text or non-JSON text for classification, the workflow now falls back to safe defaults and records the issue in `skill_errors`. The vLLM and transformers clients try to disable Qwen3 thinking mode with `enable_thinking=False` when the tokenizer supports it.
+
+Useful checks:
+
+```bash
+python -c "import vllm; print(vllm.__version__)"
+nvidia-smi
+```
+
+If parse errors are high, try increasing task `max_tokens`, reducing prompt size, or inspecting `outputs/runs/<run>/predictions.jsonl` for `skill_errors`.

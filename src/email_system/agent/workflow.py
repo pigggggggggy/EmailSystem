@@ -43,6 +43,11 @@ class EmailAgentWorkflow:
         reply = self._timed(self.reply_drafter.name, timings_ms, self.reply_drafter.run, email, context, self.llm)
 
         priority = classify.get("priority", "normal")
+        skill_errors = self._skill_errors(
+            classify_email=classify,
+            summarize_email=summary,
+            extract_action_items=actions,
+        )
         return AgentOutput(
             email_id=email.email_id,
             category=classify.get("category", "other"),
@@ -57,7 +62,11 @@ class EmailAgentWorkflow:
             ),
             requires_human_review=priority in {"high", "urgent"},
             timings_ms=timings_ms,
+            skill_errors=skill_errors,
         )
+
+    def _skill_errors(self, **outputs: dict) -> dict[str, str]:
+        return {name: str(output["parse_error"]) for name, output in outputs.items() if output.get("parse_error")}
 
     def _timed(self, name: str, timings_ms: dict[str, float], fn, *args):
         start = time.perf_counter()
