@@ -1,0 +1,9 @@
+{
+  "provider": "gmail_imap",
+  "host": "imap.gmail.com",
+  "port": 993,
+  "mailbox": "INBOX",
+  "user_env": "EMAILSYSTEM_IMAP_USER",
+  "password_env": "EMAILSYSTEM_IMAP_PASSWORD",
+  "default_mode": "read_only"
+}

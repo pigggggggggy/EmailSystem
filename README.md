@@ -182,3 +182,41 @@ python scripts/run_gmail_agent.py \
 ```
 
 Avoid `--send-mode send` until the workflow has been reviewed on your own mailbox; it sends real email.
+
+## Gmail Over IMAP
+
+If Gmail API/OAuth is too heavy, use Gmail IMAP with an App Password. This path does not require Google Cloud.
+
+Set credentials in your shell. Do not commit them:
+
+```bash
+export EMAILSYSTEM_IMAP_USER="your-address@gmail.com"
+export EMAILSYSTEM_IMAP_PASSWORD="your-16-character-app-password-without-spaces"
+```
+
+Import recent Gmail messages over IMAP:
+
+```bash
+python scripts/import_imap.py \
+  --host imap.gmail.com \
+  --user "$EMAILSYSTEM_IMAP_USER" \
+  --password-env EMAILSYSTEM_IMAP_PASSWORD \
+  --mailbox INBOX \
+  --limit 10 \
+  --output data/eval_sets/imap_inbox.jsonl
+```
+
+Run the agent directly on Gmail IMAP with safe mock inference:
+
+```bash
+python scripts/run_imap_agent.py \
+  --backend mock \
+  --host imap.gmail.com \
+  --user "$EMAILSYSTEM_IMAP_USER" \
+  --password-env EMAILSYSTEM_IMAP_PASSWORD \
+  --mailbox INBOX \
+  --limit 3 \
+  --output outputs/predictions/imap_predictions.jsonl
+```
+
+This IMAP path is read-only. It does not send or draft replies.
