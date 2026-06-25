@@ -1,0 +1,9 @@
+{
+  "input": "data/eval_sets/sample_emails.jsonl",
+  "backend": "vllm",
+  "model_path": "models/Qwen3-4B",
+  "max_model_len": 8192,
+  "tensor_parallel_size": 1,
+  "gpu_memory_utilization": 0.9,
+  "metrics": ["accuracy", "macro_f1", "latency"]
+}

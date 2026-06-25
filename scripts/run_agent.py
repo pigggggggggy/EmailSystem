@@ -17,10 +17,13 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run the email agent workflow on a JSONL file.")
     parser.add_argument("--input", default="data/eval_sets/sample_emails.jsonl")
     parser.add_argument("--output", default="outputs/predictions/sample_predictions.jsonl")
-    parser.add_argument("--backend", default="mock", choices=["mock", "transformers"])
+    parser.add_argument("--backend", default="mock", choices=["mock", "transformers", "vllm"])
     parser.add_argument("--model-path", default="models/Qwen3-4B")
     parser.add_argument("--device-map", default="auto")
     parser.add_argument("--torch-dtype", default="auto", choices=["auto", "float16", "bfloat16", "float32"])
+    parser.add_argument("--max-model-len", type=int, default=8192)
+    parser.add_argument("--tensor-parallel-size", type=int, default=1)
+    parser.add_argument("--gpu-memory-utilization", type=float, default=0.9)
     return parser.parse_args()
 
 
@@ -31,6 +34,9 @@ def main() -> None:
         model_path=args.model_path,
         device_map=args.device_map,
         torch_dtype=args.torch_dtype,
+        max_model_len=args.max_model_len,
+        tensor_parallel_size=args.tensor_parallel_size,
+        gpu_memory_utilization=args.gpu_memory_utilization,
     )
     workflow = EmailAgentWorkflow(llm)
     predictions = [workflow.run(email).to_dict() for email in read_emails(args.input)]

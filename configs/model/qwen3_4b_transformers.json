@@ -1,10 +1,9 @@
 {
-  "backend": "vllm",
+  "backend": "transformers",
   "model_name_or_path": "models/Qwen3-4B",
-  "dtype": "auto",
+  "device_map": "auto",
+  "torch_dtype": "auto",
   "max_model_len": 8192,
-  "tensor_parallel_size": 1,
-  "gpu_memory_utilization": 0.9,
   "temperature": 0.0,
   "max_tokens": 1024
 }

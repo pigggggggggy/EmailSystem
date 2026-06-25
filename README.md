@@ -10,7 +10,8 @@ The repository now contains a minimal workflow skeleton:
 
 - email dataclass schemas
 - deterministic mock LLM client
-- local transformers backend for `models/Qwen3-4B`
+- local vLLM backend for `models/Qwen3-4B`
+- local transformers backend for debugging fallback
 - classify, summarize, action-item, and reply-draft skills
 - sequential agent workflow
 - sample JSONL evaluation set
@@ -37,7 +38,7 @@ Run unit tests:
 PYTHONPATH=src python -m unittest discover -s tests/unit
 ```
 
-## Local Qwen3-4B
+## Local Qwen3-4B With vLLM
 
 The local model is expected at:
 
@@ -45,29 +46,42 @@ The local model is expected at:
 models/Qwen3-4B
 ```
 
-Install optional local model dependencies when needed:
+Install optional vLLM dependencies when needed:
 
 ```bash
-pip install -e '.[qwen]'
+pip install -e '.[vllm]'
 ```
 
-Run the agent with the local Qwen3-4B transformers backend:
+Run the agent with the local Qwen3-4B vLLM backend:
 
 ```bash
 python scripts/run_agent.py \
-  --backend transformers \
+  --backend vllm \
   --model-path models/Qwen3-4B \
+  --max-model-len 8192 \
+  --tensor-parallel-size 1 \
+  --gpu-memory-utilization 0.9 \
   --input data/eval_sets/sample_emails.jsonl \
-  --output outputs/predictions/qwen3_4b_predictions.jsonl
+  --output outputs/predictions/qwen3_4b_vllm_predictions.jsonl
 ```
 
-Run evaluation with the local model:
+Run evaluation with vLLM:
 
 ```bash
 python scripts/run_eval.py \
-  --backend transformers \
+  --backend vllm \
   --model-path models/Qwen3-4B \
+  --max-model-len 8192 \
+  --tensor-parallel-size 1 \
+  --gpu-memory-utilization 0.9 \
   --input data/eval_sets/sample_emails.jsonl
+```
+
+For low-level debugging without vLLM, the `transformers` backend is still available:
+
+```bash
+pip install -e '.[qwen]'
+python scripts/run_agent.py --backend transformers --model-path models/Qwen3-4B
 ```
 
 The `models/` and `outputs/` directories are ignored by git, so model weights and run artifacts stay out of source control.
