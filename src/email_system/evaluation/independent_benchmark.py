@@ -74,15 +74,20 @@ def run_task_speed(
     *,
     tasks: Iterable[str] = TASKS,
     warmup: int = 2,
+    show_progress: bool = False,
 ) -> tuple[list[dict], dict]:
     runners = _task_runners()
     unknown = sorted(set(tasks) - set(runners))
     if unknown:
         raise ValueError(f"unsupported speed tasks: {', '.join(unknown)}")
 
+    task_names = list(tasks)
+    progress = _speed_progress(len(rows) * len(task_names)) if show_progress else None
     samples = []
-    for task in tasks:
+    for task in task_names:
         runner = runners[task]
+        if progress is not None:
+            progress.set_postfix_str(task)
         for row in rows[:warmup]:
             runner(Email.from_dict(row), llm)
         for row in rows:
@@ -103,12 +108,25 @@ def run_task_speed(
                     "parse_error": output.get("parse_error"),
                 }
             )
+            if progress is not None:
+                progress.update(1)
+
+    if progress is not None:
+        progress.close()
 
     by_task = {}
-    for task in tasks:
+    for task in task_names:
         task_samples = [sample for sample in samples if sample["task"] == task]
         by_task[task] = speed_metrics(task_samples)
     return samples, {"samples_per_task": len(rows), "warmup_per_task": warmup, "by_task": by_task}
+
+
+def _speed_progress(total: int):
+    try:
+        from tqdm.auto import tqdm
+    except ImportError as exc:
+        raise RuntimeError("Speed progress requires tqdm. Install it with: pip install tqdm") from exc
+    return tqdm(total=total, desc="speed", unit="request", dynamic_ncols=True)
 
 
 def speed_metrics(samples: list[dict]) -> dict:

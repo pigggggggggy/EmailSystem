@@ -92,6 +92,7 @@ def main() -> None:
             speed_rows,
             tasks=args.speed_tasks,
             warmup=args.speed_warmup,
+            show_progress=True,
         )
         write_jsonl(run_dir / "speed_samples.jsonl", samples)
         metrics["speed"] = speed_metrics

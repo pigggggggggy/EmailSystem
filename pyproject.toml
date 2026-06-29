@@ -3,7 +3,9 @@ name = "email-system"
 version = "0.1.0"
 description = "Qwen3-4B based email processing agent skeleton"
 requires-python = ">=3.10"
-dependencies = []
+dependencies = [
+  "tqdm>=4.66"
+]
 
 [project.optional-dependencies]
 qwen = [
