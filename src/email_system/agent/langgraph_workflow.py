@@ -227,6 +227,10 @@ class EmailAgentWorkflow:
             skill_errors=review.get("skill_errors", {}),
             memory=state["outputs"].get("read_email", {}).get("memory", {}),
             workflow_trace=state["workflow_trace"],
+            model_backend=type(self.llm).__name__,
+            graph_backend=state.get("graph_backend", self.graph_backend),
+            route=state.get("context", {}).get("route", ""),
+            delivery_status=state["outputs"].get("send_reply", {}).get("status", ""),
         )
 
 

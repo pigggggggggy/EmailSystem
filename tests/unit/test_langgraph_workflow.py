@@ -37,6 +37,10 @@ class LangGraphWorkflowTest(unittest.TestCase):
         self.assertTrue(output.requires_human_review)
         self.assertEqual(output.memory["short_term"]["email_ids"], [])
         self.assertIn("classify_intent", output.timings_ms)
+        self.assertEqual(output.model_backend, "MockLLMClient")
+        self.assertIn(output.graph_backend, {"langgraph", "fallback"})
+        self.assertEqual(output.route, "bug_tracking")
+        self.assertEqual(output.delivery_status, "pending_human_review")
 
     def test_non_support_email_routes_to_documentation_search(self):
         workflow = EmailAgentWorkflow(MockLLMClient(), short_term_memory=ShortTermMemory(), long_term_memory=InMemoryLongTermMemory())
@@ -47,6 +51,8 @@ class LangGraphWorkflowTest(unittest.TestCase):
         self.assertIn("search_documentation", nodes)
         self.assertNotIn("bug_tracking", nodes)
         self.assertEqual(output.category, "invoice")
+        self.assertEqual(output.route, "search_documentation")
+        self.assertEqual(output.delivery_status, "ready_to_send")
 
 
 if __name__ == "__main__":

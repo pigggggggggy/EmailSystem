@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from email.header import decode_header, make_header
 from email.message import EmailMessage, Message
 from email.utils import getaddresses, parsedate_to_datetime
+from html.parser import HTMLParser
 from typing import Iterable
 
 from email_system.schemas import Email
@@ -150,8 +151,11 @@ def _body_text(message: Message) -> str:
                 plain_parts.append(payload)
             else:
                 html_parts.append(payload)
-        return "\n".join(plain_parts or html_parts).strip()
-    return _decode_part(message).strip()
+        if plain_parts:
+            return "\n".join(plain_parts).strip()
+        return _html_to_text("\n".join(html_parts))
+    content = _decode_part(message).strip()
+    return _html_to_text(content) if message.get_content_type() == "text/html" else content
 
 
 def _decode_part(part: Message) -> str:
@@ -173,3 +177,33 @@ def _attachments(message: Message) -> list[dict]:
 
 def _reply_subject(subject: str) -> str:
     return subject if subject.lower().startswith("re:") else f"Re: {subject}"
+
+
+class _HTMLTextExtractor(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__()
+        self.parts: list[str] = []
+        self.ignored_depth = 0
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag in {"script", "style"}:
+            self.ignored_depth += 1
+        elif tag in {"br", "p", "div", "li", "tr", "h1", "h2", "h3"}:
+            self.parts.append("\n")
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag in {"script", "style"} and self.ignored_depth:
+            self.ignored_depth -= 1
+        elif tag in {"p", "div", "li", "tr"}:
+            self.parts.append("\n")
+
+    def handle_data(self, data: str) -> None:
+        if not self.ignored_depth:
+            self.parts.append(data)
+
+
+def _html_to_text(value: str) -> str:
+    parser = _HTMLTextExtractor()
+    parser.feed(value)
+    lines = (" ".join(line.split()) for line in "".join(parser.parts).splitlines())
+    return "\n".join(line for line in lines if line)

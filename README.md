@@ -206,11 +206,12 @@ python scripts/import_imap.py \
   --output data/eval_sets/imap_inbox.jsonl
 ```
 
-Run the agent directly on Gmail IMAP with safe mock inference:
+Run the real LangGraph agent directly on Gmail IMAP with local Qwen3-4B through vLLM:
 
 ```bash
 python scripts/run_imap_agent.py \
-  --backend mock \
+  --backend vllm \
+  --model-path models/Qwen3-4B \
   --host imap.gmail.com \
   --user "$EMAILSYSTEM_IMAP_USER" \
   --password-env EMAILSYSTEM_IMAP_PASSWORD \
@@ -219,4 +220,4 @@ python scripts/run_imap_agent.py \
   --output outputs/predictions/imap_predictions.jsonl
 ```
 
-This IMAP path is read-only. It does not send or draft replies.
+The command requires LangGraph and records the actual graph backend, model backend, conditional route, and delivery decision in every output row. This IMAP path remains read-only: the `send_reply` node runs, but it does not send or draft replies.

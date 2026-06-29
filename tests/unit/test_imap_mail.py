@@ -21,6 +21,24 @@ class IMAPMailTest(unittest.TestCase):
         self.assertEqual(item.to, ["support@example.com"])
         self.assertIn("Please check login.", item.body_text)
 
+    def test_message_to_email_strips_html_markup(self):
+        message = EmailMessage()
+        message["Subject"] = "HTML only"
+        message["From"] = "sender.com"
+        message.set_content(
+            "<html><style>.hidden { color: red; }</style>"
+            "<body><h1>Hello</h1><p>Please review the report.</p>"
+            "<script>alert('x')</script></body></html>",
+            subtype="html",
+        )
+
+        item = message_to_email(message, imap_id="2")
+
+        self.assertIn("Hello", item.body_text)
+        self.assertIn("Please review the report.", item.body_text)
+        self.assertNotIn("<html>", item.body_text)
+        self.assertNotIn("alert", item.body_text)
+
     def test_emails_to_dicts_preserves_sender_key(self):
         message = EmailMessage()
         message["Subject"] = "Hello"

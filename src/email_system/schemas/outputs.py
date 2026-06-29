@@ -40,6 +40,10 @@ class AgentOutput:
     skill_errors: dict[str, str] = field(default_factory=dict)
     memory: dict[str, Any] = field(default_factory=dict)
     workflow_trace: list[dict[str, Any]] = field(default_factory=list)
+    model_backend: str = ""
+    graph_backend: str = ""
+    route: str = ""
+    delivery_status: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
