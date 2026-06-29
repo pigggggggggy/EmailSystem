@@ -221,3 +221,14 @@ python scripts/run_imap_agent.py \
 ```
 
 The command requires LangGraph and records the actual graph backend, model backend, conditional route, and delivery decision in every output row. This IMAP path remains read-only: the `send_reply` node runs, but it does not send or draft replies.
+
+## Build the spam benchmark
+
+Normalize and deterministically split the local Enron Spam and TREC06c datasets:
+
+```bash
+python scripts/build_spam_dataset.py \
+  --output-dir data/processed/spam_benchmark
+```
+
+For a quick parser check, add `--limit-per-source 20`. Generated JSONL files are local artifacts and are ignored by Git; `manifest.json` records the seed, split sizes, label counts, duplicate removal, and source counts.
