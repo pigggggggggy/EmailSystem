@@ -20,6 +20,19 @@ def email(email_id, subject="Urgent login issue", body="Please check this ASAP. 
     )
 
 
+class LowConfidenceLLM:
+    def generate(self, prompt, *, task, max_tokens=512):
+        from email_system.models import GenerationResult
+        import json
+        outputs = {
+            "classify_email": json.dumps({"category": "personal", "priority": "normal", "confidence": 0.0}),
+            "summarize_email": json.dumps({"summary": "summary", "confidence": 0.8}),
+            "extract_action_items": json.dumps({"action_items": []}),
+            "draft_reply": "reply",
+        }
+        return GenerationResult(text=outputs[task], input_tokens=10, output_tokens=5, latency_ms=1.0)
+
+
 class LangGraphWorkflowTest(unittest.TestCase):
     def test_support_email_routes_to_bug_tracking(self):
         workflow = EmailAgentWorkflow(
@@ -40,6 +53,14 @@ class LangGraphWorkflowTest(unittest.TestCase):
         self.assertEqual(output.model_backend, "MockLLMClient")
         self.assertIn(output.graph_backend, {"langgraph", "fallback"})
         self.assertEqual(output.route, "bug_tracking")
+        self.assertEqual(output.delivery_status, "pending_human_review")
+
+    def test_low_confidence_requires_human_review(self):
+        workflow = EmailAgentWorkflow(LowConfidenceLLM())
+
+        output = workflow.run(email("e-low", subject="Hello", body="How are you?"))
+
+        self.assertTrue(output.requires_human_review)
         self.assertEqual(output.delivery_status, "pending_human_review")
 
     def test_non_support_email_routes_to_documentation_search(self):

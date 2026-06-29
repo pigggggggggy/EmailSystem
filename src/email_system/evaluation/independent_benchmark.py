@@ -9,12 +9,12 @@ from typing import Any, Callable, Iterable
 from email_system.models import LLMClient
 from email_system.schemas import Email
 from email_system.skills import ClassifyEmailSkill, DraftReplySkill, ExtractActionItemsSkill, SummarizeEmailSkill
+from email_system.skills.classify import LOW_CONFIDENCE_THRESHOLD, VALID_CATEGORIES
 
 from .metrics import classification_metrics
 
 
 TASKS = ("classify_email", "summarize_email", "extract_action_items", "draft_reply")
-VALID_CATEGORIES = {"invoice", "support", "meeting", "sales", "spam", "personal", "other"}
 
 
 def run_classification_quality(
@@ -31,6 +31,8 @@ def run_classification_quality(
         predicted_category = str(output.get("category", "other"))
         gold_label = _gold_spam_label(row)
         invalid = bool(output.get("parse_error")) or predicted_category not in VALID_CATEGORIES
+        confidence = float(output.get("confidence", 0.0))
+        low_confidence = bool(output.get("low_confidence", confidence < LOW_CONFIDENCE_THRESHOLD))
         if invalid:
             predicted_label = "ham" if gold_label == "spam" else "spam"
         else:
@@ -41,7 +43,9 @@ def run_classification_quality(
                 "gold_spam_label": gold_label,
                 "predicted_spam_label": predicted_label,
                 "predicted_category": predicted_category,
-                "confidence": output.get("confidence", 0.0),
+                "confidence": confidence,
+                "low_confidence": low_confidence,
+                "accepted_prediction": not invalid and not low_confidence,
                 "parse_error": output.get("parse_error"),
                 "valid_category": not invalid,
                 "usage": output.get("usage", {}),
@@ -63,6 +67,16 @@ def classification_quality_metrics(predictions: list[dict]) -> dict:
     metrics["spam_recall"] = metrics["per_class"].get("spam", {}).get("recall", 0.0)
     metrics["parse_success_rate"] = _success_rate(row.get("parse_error") for row in predictions)
     metrics["valid_category_rate"] = _success_rate(not row["valid_category"] for row in predictions)
+    accepted = [row for row in predictions if row.get("accepted_prediction", False)]
+    metrics["confidence_threshold"] = LOW_CONFIDENCE_THRESHOLD
+    metrics["low_confidence_count"] = sum(row.get("low_confidence", False) for row in predictions)
+    metrics["low_confidence_rate"] = metrics["low_confidence_count"] / len(predictions) if predictions else 0.0
+    metrics["accepted_coverage"] = len(accepted) / len(predictions) if predictions else 0.0
+    metrics["accepted_accuracy"] = (
+        sum(row["gold_spam_label"] == row["predicted_spam_label"] for row in accepted) / len(accepted)
+        if accepted
+        else 0.0
+    )
     metrics["predicted_categories"] = dict(sorted(Counter(row["predicted_category"] for row in predictions).items()))
     metrics["samples"] = len(predictions)
     return metrics

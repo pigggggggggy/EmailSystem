@@ -16,6 +16,12 @@ class InvalidLLM:
         return GenerationResult(text="not json", input_tokens=10, output_tokens=2, latency_ms=5.0)
 
 
+class LowConfidenceLLM:
+    def generate(self, prompt, *, task, max_tokens=512):
+        text = json.dumps({"category": "spam", "priority": "normal", "confidence": 0.0})
+        return GenerationResult(text=text, input_tokens=10, output_tokens=5, latency_ms=5.0)
+
+
 class FixtureLLM:
     def generate(self, prompt, *, task, max_tokens=512):
         if task == "classify_email":
@@ -51,6 +57,14 @@ class IndependentBenchmarkTest(unittest.TestCase):
         self.assertEqual(metrics["spam_recall"], 1.0)
         self.assertEqual(metrics["parse_success_rate"], 1.0)
         self.assertEqual(len(predictions), 2)
+
+    def test_low_confidence_is_not_auto_accepted(self):
+        predictions, metrics = run_classification_quality(LowConfidenceLLM(), [row(1, "spam", "BUY NOW")])
+
+        self.assertEqual(metrics["accuracy"], 1.0)
+        self.assertEqual(metrics["low_confidence_rate"], 1.0)
+        self.assertEqual(metrics["accepted_coverage"], 0.0)
+        self.assertFalse(predictions[0]["accepted_prediction"])
 
     def test_parse_failure_cannot_accidentally_score_ham_as_correct(self):
         _, metrics = run_classification_quality(InvalidLLM(), [row(1, "ham", "hello")])

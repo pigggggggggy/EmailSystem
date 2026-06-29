@@ -20,6 +20,7 @@ from email_system.evaluation.independent_benchmark import (
 )
 from email_system.io import read_jsonl, write_jsonl
 from email_system.models import build_llm_client
+from email_system.models.chat_prompts import PROMPT_VERSION
 
 
 def parse_args() -> argparse.Namespace:
@@ -61,6 +62,11 @@ def main() -> None:
         f"%Y%m%d_%H%M%S_{args.backend}_independent"
     )
     run_dir.mkdir(parents=True, exist_ok=True)
+    config = vars(args).copy()
+    config["resume"] = False
+    config["input_records"] = len(rows)
+    config["prompt_version"] = PROMPT_VERSION
+    _prepare_config(run_dir / "config.json", config, resume=args.resume)
 
     print(f"Loading backend={args.backend} model={args.model_path}", flush=True)
     llm = build_llm_client(
@@ -97,12 +103,20 @@ def main() -> None:
         write_jsonl(run_dir / "speed_samples.jsonl", samples)
         metrics["speed"] = speed_metrics
 
-    config = vars(args).copy()
-    config["input_records"] = len(rows)
-    (run_dir / "config.json").write_text(json.dumps(config, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     (run_dir / "metrics.json").write_text(json.dumps(metrics, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     (run_dir / "report.md").write_text(render_report(metrics), encoding="utf-8")
     print(json.dumps({"run_dir": str(run_dir), "metrics": metrics}, ensure_ascii=False, indent=2))
+
+
+def _prepare_config(path: Path, config: dict, *, resume: bool) -> None:
+    if resume:
+        if not path.exists():
+            raise SystemExit("Cannot resume: config.json is missing from --run-dir.")
+        existing = json.loads(path.read_text(encoding="utf-8"))
+        if existing != config:
+            raise SystemExit("Cannot resume: benchmark configuration or prompt version has changed.")
+        return
+    path.write_text(json.dumps(config, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
 def _run_quality_with_checkpoints(llm, rows: list[dict], output_path: Path, *, resume: bool):
@@ -153,6 +167,9 @@ def render_report(metrics: dict) -> str:
                 f"- Spam recall: {classification['spam_recall']:.4f}",
                 f"- Parse success: {classification['parse_success_rate']:.4f}",
                 f"- Valid category: {classification['valid_category_rate']:.4f}",
+                f"- Low-confidence rate (<{classification['confidence_threshold']:.2f}): {classification['low_confidence_rate']:.4f}",
+                f"- Auto-accepted coverage: {classification['accepted_coverage']:.4f}",
+                f"- Auto-accepted accuracy: {classification['accepted_accuracy']:.4f}",
                 "",
             ]
         )

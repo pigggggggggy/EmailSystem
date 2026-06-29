@@ -158,8 +158,17 @@ class EmailAgentWorkflow:
             for name, output in state["outputs"].items()
             if isinstance(output, dict) and output.get("parse_error")
         }
+        low_confidence = bool(classify.get("low_confidence", True))
+        review_reasons = []
+        if priority in {"high", "urgent"}:
+            review_reasons.append("high_priority")
+        if low_confidence:
+            review_reasons.append("low_classification_confidence")
+        if skill_errors:
+            review_reasons.append("skill_error")
         output = {
-            "requires_human_review": priority in {"high", "urgent"} or bool(skill_errors),
+            "requires_human_review": bool(review_reasons),
+            "review_reasons": review_reasons,
             "skill_errors": skill_errors,
         }
         state["context"]["human_review"] = output
