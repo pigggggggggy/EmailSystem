@@ -232,3 +232,18 @@ python scripts/build_spam_dataset.py \
 ```
 
 For a quick parser check, add `--limit-per-source 20`. Generated JSONL files are local artifacts and are ignored by Git; `manifest.json` records the seed, split sizes, label counts, duplicate removal, and source counts.
+
+## Run the independent benchmark
+
+Measure classification quality only, while reporting speed independently for classification, summarization, action extraction, and reply drafting:
+
+```bash
+python scripts/run_independent_eval.py \
+  --backend vllm \
+  --model-path models/Qwen3-4B \
+  --input data/processed/spam_benchmark/test.jsonl \
+  --quality-limit 1000 \
+  --speed-limit 100
+```
+
+Omit `--quality-limit` for all 12,807 test emails. The default `--max-body-chars 12000` keeps long public-dataset messages within a stable input budget. Results include classification predictions, per-request speed samples, metrics, configuration, and a Markdown report under `outputs/runs/`.
