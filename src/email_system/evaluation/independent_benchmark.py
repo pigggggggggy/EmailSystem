@@ -50,6 +50,11 @@ def run_classification_quality(
         if progress_callback is not None:
             progress_callback(index, len(rows))
 
+    metrics = classification_quality_metrics(predictions)
+    return predictions, metrics
+
+
+def classification_quality_metrics(predictions: list[dict]) -> dict:
     y_true = [row["gold_spam_label"] for row in predictions]
     y_pred = [row["predicted_spam_label"] for row in predictions]
     metrics = classification_metrics(y_true, y_pred)
@@ -60,7 +65,7 @@ def run_classification_quality(
     metrics["valid_category_rate"] = _success_rate(not row["valid_category"] for row in predictions)
     metrics["predicted_categories"] = dict(sorted(Counter(row["predicted_category"] for row in predictions).items()))
     metrics["samples"] = len(predictions)
-    return predictions, metrics
+    return metrics
 
 
 def run_task_speed(

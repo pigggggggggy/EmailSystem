@@ -16,6 +16,7 @@ class ModelFactoryTest(unittest.TestCase):
                 max_model_len=4096,
                 tensor_parallel_size=2,
                 gpu_memory_utilization=0.8,
+                enforce_eager=True,
             )
 
         client_cls.assert_called_once_with(
@@ -24,6 +25,7 @@ class ModelFactoryTest(unittest.TestCase):
             max_model_len=4096,
             tensor_parallel_size=2,
             gpu_memory_utilization=0.8,
+            enforce_eager=True,
         )
 
     def test_reject_unknown_backend(self):

@@ -17,6 +17,7 @@ def build_llm_client(
     max_model_len: int | None = 8192,
     tensor_parallel_size: int = 1,
     gpu_memory_utilization: float = 0.9,
+    enforce_eager: bool = False,
 ) -> LLMClient:
     if backend == "mock":
         return MockLLMClient()
@@ -29,5 +30,6 @@ def build_llm_client(
             max_model_len=max_model_len,
             tensor_parallel_size=tensor_parallel_size,
             gpu_memory_utilization=gpu_memory_utilization,
+            enforce_eager=enforce_eager,
         )
     raise ValueError(f"Unsupported backend: {backend}")

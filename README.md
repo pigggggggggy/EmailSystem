@@ -246,4 +246,4 @@ python scripts/run_independent_eval.py \
   --speed-limit 100
 ```
 
-Omit `--quality-limit` for all 12,807 test emails. The default `--max-body-chars 12000` keeps long public-dataset messages within a stable input budget. Results include classification predictions, per-request speed samples, metrics, configuration, and a Markdown report under `outputs/runs/`.
+Omit `--quality-limit` for all 12,807 test emails. The default `--max-body-chars 6000` keeps long public-dataset messages within a stable input budget. For 16 GB GPUs the evaluator defaults to `--gpu-memory-utilization 0.75` and eager execution to avoid CUDA graph compilation peaks. Pass `--use-compiled-graphs` only when benchmarking that optimized mode with enough memory. Classification predictions are checkpointed every 100 emails; resume an interrupted named run with `--run-dir <same-dir> --resume`. Results include classification predictions, per-request speed samples, metrics, configuration, and a Markdown report under `outputs/runs/`.

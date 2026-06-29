@@ -20,6 +20,7 @@ class VLLMClient:
         tensor_parallel_size: int = 1,
         gpu_memory_utilization: float = 0.9,
         trust_remote_code: bool = True,
+        enforce_eager: bool = False,
     ) -> None:
         try:
             from vllm import LLM, SamplingParams
@@ -35,6 +36,7 @@ class VLLMClient:
             "tensor_parallel_size": tensor_parallel_size,
             "gpu_memory_utilization": gpu_memory_utilization,
             "trust_remote_code": trust_remote_code,
+            "enforce_eager": enforce_eager,
         }
         if max_model_len is not None:
             kwargs["max_model_len"] = max_model_len

@@ -12,6 +12,7 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from email_system.evaluation.independent_benchmark import (
     TASKS,
+    classification_quality_metrics,
     run_classification_quality,
     run_task_speed,
     select_benchmark_rows,
@@ -28,18 +29,24 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--backend", default="vllm", choices=["mock", "transformers", "vllm"])
     parser.add_argument("--model-path", default="models/Qwen3-4B")
     parser.add_argument("--quality-limit", type=int, default=None)
-    parser.add_argument("--max-body-chars", type=int, default=12000)
+    parser.add_argument("--max-body-chars", type=int, default=6000)
     parser.add_argument("--speed-limit", type=int, default=100)
     parser.add_argument("--speed-warmup", type=int, default=2)
     parser.add_argument("--speed-tasks", nargs="+", choices=TASKS, default=list(TASKS))
     parser.add_argument("--skip-quality", action="store_true")
+    parser.add_argument("--resume", action="store_true", help="Resume classification from an existing --run-dir")
+    parser.add_argument(
+        "--use-compiled-graphs",
+        action="store_true",
+        help="Use vLLM compiled CUDA graphs instead of the memory-safe eager default",
+    )
     parser.add_argument("--skip-speed", action="store_true")
     parser.add_argument("--seed", type=int, default=20260629)
     parser.add_argument("--device-map", default="auto")
     parser.add_argument("--torch-dtype", default="auto", choices=["auto", "float16", "bfloat16", "float32"])
     parser.add_argument("--max-model-len", type=int, default=8192)
     parser.add_argument("--tensor-parallel-size", type=int, default=1)
-    parser.add_argument("--gpu-memory-utilization", type=float, default=0.9)
+    parser.add_argument("--gpu-memory-utilization", type=float, default=0.75)
     return parser.parse_args()
 
 
@@ -64,17 +71,18 @@ def main() -> None:
         max_model_len=args.max_model_len,
         tensor_parallel_size=args.tensor_parallel_size,
         gpu_memory_utilization=args.gpu_memory_utilization,
+        enforce_eager=not args.use_compiled_graphs,
     )
 
     metrics = {}
     if not args.skip_quality:
         print(f"Running classification quality on {len(quality_rows)} emails...", flush=True)
-        predictions, quality_metrics = run_classification_quality(
+        predictions, quality_metrics = _run_quality_with_checkpoints(
             llm,
             quality_rows,
-            progress_callback=lambda current, total: _print_progress("quality", current, total),
+            run_dir / "classification_predictions.jsonl",
+            resume=args.resume,
         )
-        write_jsonl(run_dir / "classification_predictions.jsonl", predictions)
         metrics["quality"] = {"classification": quality_metrics}
 
     if not args.skip_speed:
@@ -96,9 +104,38 @@ def main() -> None:
     print(json.dumps({"run_dir": str(run_dir), "metrics": metrics}, ensure_ascii=False, indent=2))
 
 
-def _print_progress(phase: str, current: int, total: int) -> None:
-    if current == total or current % 100 == 0:
-        print(f"{phase}: {current}/{total}", flush=True)
+def _run_quality_with_checkpoints(llm, rows: list[dict], output_path: Path, *, resume: bool):
+    existing = read_jsonl(output_path) if resume and output_path.exists() else []
+    target_ids = [str(row["email_id"]) for row in rows]
+    target_id_set = set(target_ids)
+    existing_by_id = {str(row["email_id"]): row for row in existing}
+    unknown_ids = set(existing_by_id) - target_id_set
+    if unknown_ids:
+        raise SystemExit("Resume file contains predictions outside the selected quality sample.")
+    if len(existing_by_id) != len(existing):
+        raise SystemExit("Resume file contains duplicate email IDs.")
+
+    completed = [existing_by_id[email_id] for email_id in target_ids if email_id in existing_by_id]
+    remaining = [row for row in rows if str(row["email_id"]) not in existing_by_id]
+    if not resume:
+        output_path.write_text("", encoding="utf-8")
+    elif completed:
+        print(f"Resuming classification from {len(completed)} completed emails.", flush=True)
+
+    checkpoint_size = 100
+    with output_path.open("a", encoding="utf-8") as handle:
+        for start in range(0, len(remaining), checkpoint_size):
+            batch = remaining[start : start + checkpoint_size]
+            predictions, _ = run_classification_quality(llm, batch)
+            for prediction in predictions:
+                handle.write(json.dumps(prediction, ensure_ascii=False) + "\n")
+            handle.flush()
+            completed.extend(predictions)
+            print(f"quality: {len(completed)}/{len(rows)}", flush=True)
+
+    ordered = {str(row["email_id"]): row for row in completed}
+    predictions = [ordered[email_id] for email_id in target_ids]
+    return predictions, classification_quality_metrics(predictions)
 
 
 def render_report(metrics: dict) -> str:

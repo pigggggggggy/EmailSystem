@@ -1,5 +1,6 @@
 from .independent_benchmark import (
     TASKS,
+    classification_quality_metrics,
     run_classification_quality,
     run_task_speed,
     select_benchmark_rows,
@@ -11,6 +12,7 @@ from .runner import EvaluationResult, evaluate_predictions
 
 __all__ = [
     "TASKS",
+    "classification_quality_metrics",
     "run_classification_quality",
     "run_task_speed",
     "select_benchmark_rows",
