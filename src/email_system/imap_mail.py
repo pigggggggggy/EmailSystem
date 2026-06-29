@@ -17,6 +17,7 @@ class IMAPConfig:
     host: str = "imap.gmail.com"
     port: int = 993
     mailbox: str = "INBOX"
+    timeout: float = 20.0
 
 
 @dataclass(frozen=True)
@@ -32,7 +33,11 @@ class IMAPEmailClient:
         self.config = config or IMAPConfig()
 
     def fetch_recent(self, *, limit: int = 10, search: str = "ALL") -> list[Email]:
-        with imaplib.IMAP4_SSL(self.config.host, self.config.port) as client:
+        with imaplib.IMAP4_SSL(
+            self.config.host,
+            self.config.port,
+            timeout=self.config.timeout,
+        ) as client:
             client.login(self.user, self.password)
             client.select(self.config.mailbox, readonly=True)
             status, data = client.search(None, search)

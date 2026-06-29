@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import argparse
+import imaplib
 import os
+import socket
 import sys
 from pathlib import Path
 
@@ -20,6 +22,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--host", default="imap.gmail.com")
     parser.add_argument("--port", type=int, default=993)
     parser.add_argument("--mailbox", default="INBOX")
+    parser.add_argument("--timeout", type=float, default=20.0, help="IMAP connection timeout in seconds")
     parser.add_argument("--user", default=os.environ.get("EMAILSYSTEM_IMAP_USER"))
     parser.add_argument("--password-env", default="EMAILSYSTEM_IMAP_PASSWORD")
     parser.add_argument("--limit", type=int, default=3)
@@ -42,12 +45,34 @@ def main() -> None:
         raise SystemExit("Missing --user or EMAILSYSTEM_IMAP_USER")
     if not password:
         raise SystemExit(f"Missing password environment variable: {args.password_env}")
+    print(f"[1/4] Connecting to {args.host}:{args.port} as {args.user}...", flush=True)
     imap_client = IMAPEmailClient(
         user=args.user,
         password=password,
-        config=IMAPConfig(host=args.host, port=args.port, mailbox=args.mailbox),
+        config=IMAPConfig(
+            host=args.host,
+            port=args.port,
+            mailbox=args.mailbox,
+            timeout=args.timeout,
+        ),
     )
-    emails = imap_client.fetch_recent(limit=args.limit, search=args.search)
+    try:
+        emails = imap_client.fetch_recent(limit=args.limit, search=args.search)
+    except imaplib.IMAP4.error as exc:
+        raise SystemExit(
+            "IMAP authentication or mailbox operation failed. Check the Gmail address, "
+            "use a newly generated App Password, and confirm IMAP access is allowed. "
+            f"Server response: {exc}"
+        ) from exc
+    except (TimeoutError, socket.timeout) as exc:
+        raise SystemExit(
+            f"IMAP connection timed out after {args.timeout:g}s. Check network access to "
+            f"{args.host}:{args.port} from this container."
+        ) from exc
+    except OSError as exc:
+        raise SystemExit(f"IMAP connection failed: {exc}") from exc
+    print(f"[2/4] Fetched {len(emails)} email(s) from {args.mailbox}.", flush=True)
+    print(f"[3/4] Loading {args.backend} backend and running workflow...", flush=True)
     llm = build_llm_client(
         args.backend,
         model_path=args.model_path,
@@ -60,7 +85,7 @@ def main() -> None:
     workflow = EmailAgentWorkflow(llm)
     predictions = [workflow.run(email).to_dict() for email in emails]
     write_jsonl(args.output, predictions)
-    print(f"processed={len(predictions)} backend={args.backend} output={args.output}")
+    print(f"[4/4] processed={len(predictions)} backend={args.backend} output={args.output}", flush=True)
 
 
 if __name__ == "__main__":
