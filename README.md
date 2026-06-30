@@ -250,6 +250,39 @@ Omit `--quality-limit` for all 12,807 test emails. The default `--max-body-chars
 
 Classification confidence below `0.5` is treated as an abstention: the candidate category remains available for raw accuracy analysis, but the Agent requires human review and will not auto-send. The report includes low-confidence rate, auto-accepted coverage, and accuracy among accepted predictions. Prompt versions are stored in `config.json`; start a new run directory after a prompt change instead of resuming an older baseline.
 
+## Web API and UI
+
+Run the FastAPI wrapper with the mock backend for a quick local trial:
+
+```bash
+pip install -e '.[api]'
+python scripts/run_api.py --backend mock --port 8000
+```
+
+Open `http://127.0.0.1:8000` to paste an email and get classification, summary, action items, reply suggestions, and workflow timing. The UI does not send email; it only calls the local LangGraph agent and shows the result.
+
+Run the same API with local Qwen3-4B through vLLM:
+
+```bash
+pip install -e '.[api,vllm,agent]'
+python scripts/run_api.py \
+  --backend vllm \
+  --model-path models/Qwen3-4B \
+  --gpu-memory-utilization 0.75 \
+  --port 8000
+```
+
+The JSON endpoint is `POST /api/process`:
+
+```json
+{
+  "subject": "Need help with invoice",
+  "sender": "customer@example.com",
+  "to": ["me@example.com"],
+  "body_text": "Could you check this invoice?"
+}
+```
+
 ## Fine-tune classification with LoRA
 
 The first fine-tuning target is classification accuracy on the spam benchmark. Prepare chat-format data from the existing train/validation splits:
