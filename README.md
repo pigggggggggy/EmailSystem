@@ -261,6 +261,13 @@ python scripts/run_api.py --backend mock --port 8000
 
 Open `http://127.0.0.1:8000` to paste an email and get classification, summary, action items, reply suggestions, and workflow timing. The UI does not send email; it only calls the local LangGraph agent and shows the result.
 
+To let the page read the latest Gmail messages through IMAP, set credentials before starting the API. The Gmail button reads the first 10 recent `INBOX` messages by default and processes each with the same agent workflow.
+
+```bash
+export EMAILSYSTEM_IMAP_USER="your-address@gmail.com"
+export EMAILSYSTEM_IMAP_PASSWORD="your-app-password"
+```
+
 Run the same API with local Qwen3-4B through vLLM:
 
 ```bash

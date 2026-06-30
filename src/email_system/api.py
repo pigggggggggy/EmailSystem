@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
 
 from email_system.agent import EmailAgentWorkflow
+from email_system.imap_mail import IMAPConfig, IMAPEmailClient
 from email_system.models import build_llm_client
 from email_system.schemas import Email
 
@@ -29,6 +30,20 @@ class EmailProcessRequest(BaseModel):
 
 class EmailProcessResponse(BaseModel):
     output: Dict[str, Any]
+    elapsed_ms: float
+
+
+class GmailRecentRequest(BaseModel):
+    limit: int = Field(default=10, ge=1, le=50)
+    mailbox: str = Field(default="INBOX", max_length=120)
+    search: str = Field(default="ALL", max_length=500)
+    host: str = Field(default="imap.gmail.com", max_length=255)
+    port: int = Field(default=993, ge=1, le=65535)
+    timeout: float = Field(default=20.0, ge=1.0, le=120.0)
+
+
+class GmailRecentResponse(BaseModel):
+    emails: List[Dict[str, Any]]
     elapsed_ms: float
 
 
@@ -75,6 +90,59 @@ async def process_email(request: EmailProcessRequest) -> EmailProcessResponse:
     return EmailProcessResponse(output=output.to_dict(), elapsed_ms=elapsed_ms)
 
 
+@app.post("/api/gmail/recent", response_model=GmailRecentResponse)
+async def process_recent_gmail(request: GmailRecentRequest = GmailRecentRequest()) -> GmailRecentResponse:
+    user = _secret("IMAP_USER", "EMAILSYSTEM_IMAP_USER")
+    password = _secret("IMAP_PASSWORD", "EMAILSYSTEM_IMAP_PASSWORD")
+    if not user or not password:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Missing Gmail IMAP credentials. Set EMAILSYSTEM_IMAP_USER and "
+                "EMAILSYSTEM_IMAP_PASSWORD, or EMAILSYSTEM_API_IMAP_USER and "
+                "EMAILSYSTEM_API_IMAP_PASSWORD before starting the API."
+            ),
+        )
+
+    def run_batch() -> List[Dict[str, Any]]:
+        client = IMAPEmailClient(
+            user=user,
+            password=password,
+            config=IMAPConfig(
+                host=request.host,
+                port=request.port,
+                mailbox=request.mailbox,
+                timeout=request.timeout,
+            ),
+        )
+        emails = client.fetch_recent(limit=request.limit, search=request.search)
+        workflow = _workflow()
+        rows = []
+        for email in emails:
+            output = workflow.run(email).to_dict()
+            rows.append(
+                {
+                    "email": {
+                        "email_id": email.email_id,
+                        "thread_id": email.thread_id,
+                        "subject": email.subject,
+                        "sender": email.sender,
+                        "to": email.to,
+                        "cc": email.cc,
+                        "timestamp": email.timestamp,
+                        "body_preview": email.body_text[:500],
+                    },
+                    "output": output,
+                }
+            )
+        return rows
+
+    start = time.perf_counter()
+    rows = await run_in_threadpool(run_batch)
+    elapsed_ms = (time.perf_counter() - start) * 1000
+    return GmailRecentResponse(emails=rows, elapsed_ms=elapsed_ms)
+
+
 @lru_cache(maxsize=1)
 def _workflow() -> EmailAgentWorkflow:
     backend = _setting("BACKEND", "mock")
@@ -93,6 +161,10 @@ def _workflow() -> EmailAgentWorkflow:
 
 def _setting(name: str, default: str) -> str:
     return os.environ.get(f"EMAILSYSTEM_API_{name}", default)
+
+
+def _secret(api_name: str, fallback_env: str) -> str:
+    return os.environ.get(f"EMAILSYSTEM_API_{api_name}") or os.environ.get(fallback_env, "")
 
 
 _INDEX_HTML = r'''
@@ -198,6 +270,13 @@ _INDEX_HTML = r'''
     .block .body { padding: 12px; line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; min-height: 48px; }
     .actions-list { margin: 0; padding: 0; list-style: none; display: grid; gap: 8px; }
     .actions-list li { padding: 9px 10px; background: #fff; border: 1px solid var(--line); border-radius: 6px; }
+    .secondary { background: #334155; }
+    .secondary:hover { background: #1f2937; }
+    .batch-list { display: grid; gap: 10px; }
+    .email-card { text-align: left; width: 100%; min-width: 0; background: #fff; color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 10px; cursor: pointer; }
+    .email-card:hover { border-color: var(--accent); background: #f8fbfb; }
+    .email-card strong { display: block; overflow-wrap: anywhere; margin-bottom: 4px; }
+    .email-card span { display: block; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
     .trace { display: grid; gap: 8px; }
     .trace-row { display: grid; grid-template-columns: 160px 1fr 90px; gap: 10px; align-items: center; font-size: 13px; }
     .bar { height: 8px; background: var(--panel-soft); border-radius: 999px; overflow: hidden; }
@@ -246,7 +325,10 @@ _INDEX_HTML = r'''
           <label>正文<textarea id="body" placeholder="粘贴邮件正文">Juan has added you to favorites on Hotti. Take the lead and chat first!!</textarea></label>
           <div class="actions">
             <div class="subtle">不会发送邮件，只生成建议。</div>
-            <button id="submitBtn" type="submit">处理邮件</button>
+            <div class="row">
+              <button id="submitBtn" type="submit">处理邮件</button>
+              <button id="gmailBtn" class="secondary" type="button">读取 Gmail 前 10 条</button>
+            </div>
           </div>
         </form>
       </section>
@@ -265,6 +347,7 @@ _INDEX_HTML = r'''
           <div class="block"><h2>总结</h2><div class="body empty" id="summary">等待邮件处理结果</div></div>
           <div class="block"><h2>回复建议</h2><div class="body empty" id="reply">等待邮件处理结果</div></div>
           <div class="block"><h2>待办事项</h2><div class="body"><ul class="actions-list" id="actionsList"><li class="empty">暂无</li></ul></div></div>
+          <div class="block"><h2>Gmail 批量结果</h2><div class="body batch-list" id="batchList"><div class="empty">暂无</div></div></div>
           <div class="block"><h2>工作流轨迹</h2><div class="body trace" id="trace"><div class="empty">暂无</div></div></div>
         </div>
       </section>
@@ -274,6 +357,7 @@ _INDEX_HTML = r'''
     const $ = (id) => document.getElementById(id);
     const form = $('emailForm');
     const button = $('submitBtn');
+    const gmailButton = $('gmailBtn');
 
     async function loadHealth() {
       try {
@@ -318,6 +402,33 @@ _INDEX_HTML = r'''
       }
     });
 
+
+    gmailButton.addEventListener('click', async () => {
+      gmailButton.disabled = true;
+      button.disabled = true;
+      gmailButton.textContent = '读取中';
+      $('elapsedText').textContent = '正在读取 Gmail 并运行 Agent';
+      $('batchList').innerHTML = '<div class="empty">正在处理前 10 条邮件，Qwen3 后端可能需要一些时间</div>';
+      try {
+        const res = await fetch('/api/gmail/recent', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ limit: 10 })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || '读取 Gmail 失败');
+        renderBatch(data);
+        if (data.emails && data.emails.length) renderResult({ output: data.emails[0].output, elapsed_ms: data.elapsed_ms });
+      } catch (err) {
+        $('batchList').innerHTML = `<div class="error">${escapeHtml(err.message)}</div>`;
+        $('elapsedText').textContent = 'Gmail 处理失败';
+      } finally {
+        gmailButton.disabled = false;
+        button.disabled = false;
+        gmailButton.textContent = '读取 Gmail 前 10 条';
+      }
+    });
+
     function renderResult(data) {
       const out = data.output;
       $('category').textContent = out.category || '-';
@@ -331,6 +442,28 @@ _INDEX_HTML = r'''
       $('elapsedText').textContent = `${Math.round(data.elapsed_ms)} ms · ${out.delivery_status || 'no-op'}`;
       renderActions(out.action_items || []);
       renderTrace(out.workflow_trace || []);
+    }
+
+
+    function renderBatch(data) {
+      const box = $('batchList');
+      const rows = data.emails || [];
+      if (!rows.length) {
+        box.innerHTML = '<div class="empty">没有读取到邮件</div>';
+        return;
+      }
+      box.innerHTML = '';
+      rows.forEach((row, index) => {
+        const card = document.createElement('button');
+        card.type = 'button';
+        card.className = 'email-card';
+        const category = row.output.category || '-';
+        const review = row.output.requires_human_review ? '需审核' : '可处理';
+        card.innerHTML = `<strong>${index + 1}. ${escapeHtml(row.email.subject || '(无主题)')}</strong><span>${escapeHtml(row.email.sender || '')}</span><span>${escapeHtml(category)} · ${escapeHtml(review)} · ${escapeHtml(row.output.summary || '')}</span>`;
+        card.addEventListener('click', () => renderResult({ output: row.output, elapsed_ms: data.elapsed_ms }));
+        box.appendChild(card);
+      });
+      $('elapsedText').textContent = `Gmail ${rows.length} 封 · ${Math.round(data.elapsed_ms)} ms`;
     }
 
     function renderActions(items) {
