@@ -249,3 +249,43 @@ python scripts/run_independent_eval.py \
 Omit `--quality-limit` for all 12,807 test emails. The default `--max-body-chars 6000` keeps long public-dataset messages within a stable input budget. For 16 GB GPUs the evaluator defaults to `--gpu-memory-utilization 0.75` and eager execution to avoid CUDA graph compilation peaks. Pass `--use-compiled-graphs` only when benchmarking that optimized mode with enough memory. Classification predictions are checkpointed every 100 emails; resume an interrupted named run with `--run-dir <same-dir> --resume`. Results include classification predictions, per-request speed samples, metrics, configuration, and a Markdown report under `outputs/runs/`.
 
 Classification confidence below `0.5` is treated as an abstention: the candidate category remains available for raw accuracy analysis, but the Agent requires human review and will not auto-send. The report includes low-confidence rate, auto-accepted coverage, and accuracy among accepted predictions. Prompt versions are stored in `config.json`; start a new run directory after a prompt change instead of resuming an older baseline.
+
+## Fine-tune classification with LoRA
+
+The first fine-tuning target is classification accuracy on the spam benchmark. Prepare chat-format data from the existing train/validation splits:
+
+```bash
+python training/prepare_lora_classification_data.py \
+  --input-dir data/processed/spam_benchmark \
+  --output-dir data/finetune/classification_lora
+```
+
+Install training dependencies and train a QLoRA adapter:
+
+```bash
+pip install -e '.[finetune]'
+python training/train_lora_classification.py \
+  --model-path models/Qwen3-4B \
+  --output-dir outputs/lora/qwen3_4b_classification_lora \
+  --load-in-4bit \
+  --bf16
+```
+
+Merge the adapter for simple vLLM evaluation:
+
+```bash
+python training/merge_lora.py \
+  --base-model models/Qwen3-4B \
+  --adapter outputs/lora/qwen3_4b_classification_lora \
+  --output-dir models/Qwen3-4B-email-classifier
+
+python scripts/run_independent_eval.py \
+  --backend vllm \
+  --model-path models/Qwen3-4B-email-classifier \
+  --input data/processed/spam_benchmark/test.jsonl \
+  --quality-limit 1000 \
+  --speed-limit 100 \
+  --run-dir outputs/runs/qwen3_4b_lora_eval
+```
+
+See [docs/lora_finetuning.md](docs/lora_finetuning.md) for the full workflow and tuning notes.

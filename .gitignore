@@ -228,6 +228,7 @@ data/raw/
 data/interim/
 data/processed/
 data/labels/
+data/finetune/
 *.safetensors
 *.gguf
 *.bin

@@ -14,6 +14,16 @@ qwen = [
   "torch>=2.1",
   "transformers>=4.41"
 ]
+finetune = [
+  "accelerate>=0.30",
+  "bitsandbytes>=0.43",
+  "datasets>=2.19",
+  "peft>=0.11",
+  "safetensors>=0.4",
+  "torch>=2.1",
+  "transformers>=4.41",
+  "trl>=0.9"
+]
 vllm = [
   "safetensors>=0.4",
   "vllm>=0.5"
