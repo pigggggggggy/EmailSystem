@@ -313,6 +313,25 @@ python training/train_lora_classification.py \
   --bf16
 ```
 
+Run the same training job detached from the terminal. It defaults to GPU `3`, writes logs under `outputs/logs/`, and records a PID under `outputs/pids/`:
+
+```bash
+scripts/start_lora_training_detached.sh
+```
+
+Useful overrides:
+
+```bash
+GPU_ID=3 RUN_NAME=qwen3_lora_10k MAX_TRAIN_SAMPLES=10000 scripts/start_lora_training_detached.sh
+```
+
+Watch progress or stop the background job:
+
+```bash
+tail -f outputs/logs/qwen3_4b_classification_lora.log
+scripts/kill_lora_training.sh qwen3_4b_classification_lora
+```
+
 Merge the adapter for simple vLLM evaluation:
 
 ```bash
