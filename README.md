@@ -307,6 +307,8 @@ pip install -e '.[finetune]'
 python training/train_lora_classification.py \
   --model-path models/Qwen3-4B \
   --output-dir outputs/lora/qwen3_4b_classification_lora \
+  --max-train-samples 10000 \
+  --max-validation-samples 2000 \
   --load-in-4bit \
   --bf16
 ```

@@ -30,6 +30,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--save-steps", type=int, default=200)
     parser.add_argument("--save-total-limit", type=int, default=2)
     parser.add_argument("--seed", type=int, default=20260630)
+    parser.add_argument("--max-train-samples", type=int, default=10000, help="Shuffle and keep this many train rows; 0 disables the cap.")
+    parser.add_argument("--max-validation-samples", type=int, default=2000, help="Shuffle and keep this many validation rows; 0 disables the cap.")
     return parser.parse_args()
 
 
@@ -86,6 +88,13 @@ def main() -> None:
         "json",
         data_files={"train": args.train_file, "validation": args.validation_file},
     )
+    dataset["train"] = _limit_dataset(dataset["train"], args.max_train_samples, seed=args.seed)
+    dataset["validation"] = _limit_dataset(dataset["validation"], args.max_validation_samples, seed=args.seed + 1)
+    print(
+        f"Using train={len(dataset['train'])} validation={len(dataset['validation'])} "
+        f"max_train_samples={args.max_train_samples} max_validation_samples={args.max_validation_samples}",
+        flush=True,
+    )
 
     def formatting_func(example: dict) -> str:
         return tokenizer.apply_chat_template(example["messages"], tokenize=False, add_generation_prompt=False)
@@ -118,6 +127,12 @@ def main() -> None:
     trainer.save_model(args.output_dir)
     tokenizer.save_pretrained(args.output_dir)
     _write_run_config(args)
+
+
+def _limit_dataset(split, max_samples: int, *, seed: int):
+    if max_samples <= 0 or len(split) <= max_samples:
+        return split
+    return split.shuffle(seed=seed).select(range(max_samples))
 
 
 def _build_training_arguments(training_arguments_cls, args: argparse.Namespace):
