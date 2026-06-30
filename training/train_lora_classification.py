@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import inspect
 import json
+import math
 from pathlib import Path
 
 
@@ -34,6 +35,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--seed", type=int, default=20260630)
     parser.add_argument("--max-train-samples", type=int, default=5000, help="Shuffle and keep this many train rows per epoch; 0 disables the cap.")
     parser.add_argument("--max-validation-samples", type=int, default=1000, help="Shuffle and keep this many validation rows; 0 disables the cap.")
+    parser.add_argument(
+        "--resample-train-each-epoch",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="When max train samples is enabled and epochs > 1, draw a different deterministic sample for each epoch.",
+    )
     return parser.parse_args()
 
 
@@ -42,7 +49,7 @@ def main() -> None:
     _assert_input(args.train_file)
     _assert_input(args.validation_file)
 
-    from datasets import load_dataset
+    from datasets import concatenate_datasets, load_dataset
     from peft import LoraConfig, TaskType, get_peft_model, prepare_model_for_kbit_training
     from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig, TrainingArguments
     import torch
@@ -90,11 +97,13 @@ def main() -> None:
         "json",
         data_files={"train": args.train_file, "validation": args.validation_file},
     )
-    dataset["train"] = _limit_dataset(dataset["train"], args.max_train_samples, seed=args.seed)
+    dataset["train"] = _prepare_train_dataset(dataset["train"], args, concatenate_datasets)
     dataset["validation"] = _limit_dataset(dataset["validation"], args.max_validation_samples, seed=args.seed + 1)
+    _configure_logical_epoch_strategies(args)
     print(
         f"Using train={len(dataset['train'])} validation={len(dataset['validation'])} "
-        f"max_train_samples={args.max_train_samples} max_validation_samples={args.max_validation_samples}",
+        f"max_train_samples={args.max_train_samples} max_validation_samples={args.max_validation_samples} "
+        f"logical_epochs={args._logical_epochs} effective_epochs={args._effective_epochs}",
         flush=True,
     )
 
@@ -131,6 +140,55 @@ def main() -> None:
     _write_run_config(args)
 
 
+def _prepare_train_dataset(split, args: argparse.Namespace, concatenate_datasets_fn):
+    args._logical_epochs = _logical_epoch_count(args.epochs)
+    args._effective_epochs = args.epochs
+    args._steps_per_logical_epoch = None
+    if (
+        not args.resample_train_each_epoch
+        or args.max_train_samples <= 0
+        or args._logical_epochs <= 1
+        or len(split) <= args.max_train_samples
+    ):
+        return _limit_dataset(split, args.max_train_samples, seed=args.seed)
+
+    pieces = [
+        _limit_dataset(split, args.max_train_samples, seed=args.seed + epoch_index)
+        for epoch_index in range(args._logical_epochs)
+    ]
+    args._effective_epochs = 1.0
+    args._steps_per_logical_epoch = _optimizer_steps_per_epoch(args.max_train_samples, args)
+    return concatenate_datasets_fn(pieces)
+
+
+def _logical_epoch_count(epochs: float) -> int:
+    if epochs <= 1:
+        return 1
+    if not float(epochs).is_integer():
+        raise ValueError("--resample-train-each-epoch requires integer --epochs when epochs > 1")
+    return int(epochs)
+
+
+def _optimizer_steps_per_epoch(samples: int, args: argparse.Namespace) -> int:
+    effective_batch = max(1, args.per_device_train_batch_size * args.gradient_accumulation_steps)
+    return max(1, math.ceil(samples / effective_batch))
+
+
+def _configure_logical_epoch_strategies(args: argparse.Namespace) -> None:
+    args._effective_eval_strategy = args.eval_strategy
+    args._effective_save_strategy = args.save_strategy
+    args._effective_eval_steps = args.eval_steps
+    args._effective_save_steps = args.save_steps
+    if args._steps_per_logical_epoch is None:
+        return
+    if args.eval_strategy == "epoch":
+        args._effective_eval_strategy = "steps"
+        args._effective_eval_steps = args._steps_per_logical_epoch
+    if args.save_strategy == "epoch":
+        args._effective_save_strategy = "steps"
+        args._effective_save_steps = args._steps_per_logical_epoch
+
+
 def _limit_dataset(split, max_samples: int, *, seed: int):
     if max_samples <= 0 or len(split) <= max_samples:
         return split
@@ -139,13 +197,13 @@ def _limit_dataset(split, max_samples: int, *, seed: int):
 
 def _build_training_arguments(training_arguments_cls, args: argparse.Namespace):
     values = _base_training_arg_values(args)
-    values[_eval_strategy_argument(training_arguments_cls)] = args.eval_strategy
+    values[_eval_strategy_argument(training_arguments_cls)] = getattr(args, "_effective_eval_strategy", args.eval_strategy)
     return training_arguments_cls(**_filter_kwargs(training_arguments_cls.__init__, values))
 
 
 def _build_sft_config(sft_config_cls, args: argparse.Namespace):
     values = _base_training_arg_values(args)
-    values[_eval_strategy_argument(sft_config_cls)] = args.eval_strategy
+    values[_eval_strategy_argument(sft_config_cls)] = getattr(args, "_effective_eval_strategy", args.eval_strategy)
     parameters = inspect.signature(sft_config_cls.__init__).parameters
     if "max_length" in parameters:
         values["max_length"] = args.max_seq_length
@@ -159,15 +217,15 @@ def _build_sft_config(sft_config_cls, args: argparse.Namespace):
 def _base_training_arg_values(args: argparse.Namespace) -> dict:
     return {
         "output_dir": args.output_dir,
-        "num_train_epochs": args.epochs,
+        "num_train_epochs": getattr(args, "_effective_epochs", args.epochs),
         "learning_rate": args.learning_rate,
         "per_device_train_batch_size": args.per_device_train_batch_size,
         "per_device_eval_batch_size": args.per_device_eval_batch_size,
         "gradient_accumulation_steps": args.gradient_accumulation_steps,
         "logging_steps": args.logging_steps,
-        "eval_steps": args.eval_steps,
-        "save_strategy": args.save_strategy,
-        "save_steps": args.save_steps,
+        "eval_steps": getattr(args, "_effective_eval_steps", args.eval_steps),
+        "save_strategy": getattr(args, "_effective_save_strategy", args.save_strategy),
+        "save_steps": getattr(args, "_effective_save_steps", args.save_steps),
         "save_total_limit": args.save_total_limit,
         "bf16": args.bf16,
         "fp16": args.fp16,

@@ -323,9 +323,12 @@ python training/train_lora_classification.py \
   --per-device-train-batch-size 2 \
   --eval-strategy epoch \
   --save-strategy epoch \
+  --resample-train-each-epoch \
   --load-in-4bit \
   --bf16
 ```
+
+For multi-epoch runs, capped training data is resampled per logical epoch with deterministic `seed + epoch_index` sampling, and epoch checkpoint/eval boundaries are mapped to those logical epoch steps.
 
 Run the same training job detached from the terminal. It defaults to GPU `3`, writes logs under `outputs/logs/`, and records a PID under `outputs/pids/`:
 

@@ -25,6 +25,7 @@ EVAL_STRATEGY="${EVAL_STRATEGY:-epoch}"
 SAVE_STRATEGY="${SAVE_STRATEGY:-epoch}"
 EVAL_STEPS="${EVAL_STEPS:-200}"
 SAVE_STEPS="${SAVE_STEPS:-200}"
+SEED="${SEED:-20260630}"
 EXTRA_ARGS="${EXTRA_ARGS:-}"
 
 mkdir -p "$LOG_DIR" "$PID_DIR" "$OUTPUT_DIR"
@@ -55,6 +56,7 @@ command=(
   --save-strategy "$SAVE_STRATEGY"
   --eval-steps "$EVAL_STEPS"
   --save-steps "$SAVE_STEPS"
+  --seed "$SEED"
   --load-in-4bit
   --bf16
 )
