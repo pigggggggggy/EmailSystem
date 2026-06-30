@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import inspect
 import json
 from pathlib import Path
 
@@ -42,6 +43,10 @@ def main() -> None:
     from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig, TrainingArguments
     import torch
     from trl import SFTTrainer
+    try:
+        from trl import SFTConfig
+    except ImportError:
+        SFTConfig = None
 
     tokenizer = AutoTokenizer.from_pretrained(args.model_path, trust_remote_code=True)
     if tokenizer.pad_token is None:
@@ -85,39 +90,87 @@ def main() -> None:
     def formatting_func(example: dict) -> str:
         return tokenizer.apply_chat_template(example["messages"], tokenize=False, add_generation_prompt=False)
 
-    training_args = TrainingArguments(
-        output_dir=args.output_dir,
-        num_train_epochs=args.epochs,
-        learning_rate=args.learning_rate,
-        per_device_train_batch_size=args.per_device_train_batch_size,
-        per_device_eval_batch_size=args.per_device_eval_batch_size,
-        gradient_accumulation_steps=args.gradient_accumulation_steps,
-        logging_steps=args.logging_steps,
-        evaluation_strategy="steps",
-        eval_steps=args.eval_steps,
-        save_steps=args.save_steps,
-        save_total_limit=args.save_total_limit,
-        bf16=args.bf16,
-        fp16=args.fp16,
-        report_to="none",
-        remove_unused_columns=True,
-        seed=args.seed,
-    )
-
-    trainer = SFTTrainer(
-        model=model,
-        tokenizer=tokenizer,
-        args=training_args,
-        train_dataset=dataset["train"],
-        eval_dataset=dataset["validation"],
-        formatting_func=formatting_func,
-        max_seq_length=args.max_seq_length,
-        packing=False,
-    )
+    trainer_signature = inspect.signature(SFTTrainer.__init__).parameters
+    if SFTConfig is not None and "processing_class" in trainer_signature:
+        training_args = _build_sft_config(SFTConfig, args)
+        trainer_values = {
+            "model": model,
+            "processing_class": tokenizer,
+            "args": training_args,
+            "train_dataset": dataset["train"],
+            "eval_dataset": dataset["validation"],
+            "formatting_func": formatting_func,
+        }
+    else:
+        training_args = _build_training_arguments(TrainingArguments, args)
+        trainer_values = {
+            "model": model,
+            "tokenizer": tokenizer,
+            "args": training_args,
+            "train_dataset": dataset["train"],
+            "eval_dataset": dataset["validation"],
+            "formatting_func": formatting_func,
+            "max_seq_length": args.max_seq_length,
+            "packing": False,
+        }
+    trainer = SFTTrainer(**_filter_kwargs(SFTTrainer.__init__, trainer_values))
     trainer.train()
     trainer.save_model(args.output_dir)
     tokenizer.save_pretrained(args.output_dir)
     _write_run_config(args)
+
+
+def _build_training_arguments(training_arguments_cls, args: argparse.Namespace):
+    values = _base_training_arg_values(args)
+    values[_training_strategy_argument(training_arguments_cls)] = "steps"
+    return training_arguments_cls(**_filter_kwargs(training_arguments_cls.__init__, values))
+
+
+def _build_sft_config(sft_config_cls, args: argparse.Namespace):
+    values = _base_training_arg_values(args)
+    values[_training_strategy_argument(sft_config_cls)] = "steps"
+    parameters = inspect.signature(sft_config_cls.__init__).parameters
+    if "max_length" in parameters:
+        values["max_length"] = args.max_seq_length
+    elif "max_seq_length" in parameters:
+        values["max_seq_length"] = args.max_seq_length
+    if "packing" in parameters:
+        values["packing"] = False
+    return sft_config_cls(**_filter_kwargs(sft_config_cls.__init__, values))
+
+
+def _base_training_arg_values(args: argparse.Namespace) -> dict:
+    return {
+        "output_dir": args.output_dir,
+        "num_train_epochs": args.epochs,
+        "learning_rate": args.learning_rate,
+        "per_device_train_batch_size": args.per_device_train_batch_size,
+        "per_device_eval_batch_size": args.per_device_eval_batch_size,
+        "gradient_accumulation_steps": args.gradient_accumulation_steps,
+        "logging_steps": args.logging_steps,
+        "eval_steps": args.eval_steps,
+        "save_steps": args.save_steps,
+        "save_total_limit": args.save_total_limit,
+        "bf16": args.bf16,
+        "fp16": args.fp16,
+        "report_to": "none",
+        "remove_unused_columns": True,
+        "seed": args.seed,
+    }
+
+
+def _training_strategy_argument(arguments_cls) -> str:
+    parameters = inspect.signature(arguments_cls.__init__).parameters
+    if "eval_strategy" in parameters:
+        return "eval_strategy"
+    if "evaluation_strategy" in parameters:
+        return "evaluation_strategy"
+    raise RuntimeError(f"{arguments_cls.__name__} does not expose an eval strategy parameter")
+
+
+def _filter_kwargs(fn, values: dict) -> dict:
+    parameters = inspect.signature(fn).parameters
+    return {key: value for key, value in values.items() if key in parameters}
 
 
 def _assert_input(path: str) -> None:
