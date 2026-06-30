@@ -222,6 +222,18 @@ python scripts/run_imap_agent.py \
 
 The command requires LangGraph and records the actual graph backend, model backend, conditional route, and delivery decision in every output row. This IMAP path remains read-only: the `send_reply` node runs, but it does not send or draft replies.
 
+## Build the phishing benchmark
+
+Normalize the local phishing email CSV collection into the same EmailSystem JSONL schema used by the spam benchmark:
+
+```bash
+python scripts/build_phishing_dataset.py \
+  --input-dir "datasets/Phishing Email Dataset" \
+  --output-dir data/processed/phishing_benchmark
+```
+
+The generated records preserve `labels.phishing` and `labels.phishing_label`. For compatibility with the current classifier, phishing rows also map to `labels.category=spam` and legitimate rows map to `labels.category=other`. Generated files are local artifacts ignored by Git.
+
 ## Build the spam benchmark
 
 Normalize and deterministically split the local Enron Spam and TREC06c datasets:
