@@ -5,6 +5,7 @@ import argparse
 import json
 import sys
 from pathlib import Path
+from collections import Counter
 from typing import Iterable
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -13,9 +14,20 @@ sys.path.insert(0, str(ROOT / "src"))
 from email_system.models.chat_prompts import messages_for_task
 
 
+DEFAULT_INPUT_DIRS = [
+    "data/processed/spam_benchmark",
+    "data/processed/phishing_benchmark",
+]
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Prepare chat-format LoRA data for email classification.")
-    parser.add_argument("--input-dir", default="data/processed/spam_benchmark")
+    parser.add_argument(
+        "--input-dir",
+        action="append",
+        default=None,
+        help="Processed benchmark directory containing train/validation JSONL. Repeat to merge datasets. Defaults to spam + phishing benchmarks.",
+    )
     parser.add_argument("--output-dir", default="data/finetune/classification_lora")
     parser.add_argument("--train-split", default="train")
     parser.add_argument("--validation-split", default="validation")
@@ -27,12 +39,12 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
-    input_dir = Path(args.input_dir)
+    input_dirs = [Path(value) for value in (args.input_dir or DEFAULT_INPUT_DIRS)]
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    train_rows = list(_read_jsonl(input_dir / f"{args.train_split}.jsonl"))
-    validation_rows = list(_read_jsonl(input_dir / f"{args.validation_split}.jsonl"))
+    train_rows, train_sources = _collect_split_rows(input_dirs, args.train_split)
+    validation_rows, validation_sources = _collect_split_rows(input_dirs, args.validation_split)
 
     train_count = _write_chat_jsonl(
         output_dir / "train.jsonl",
@@ -50,11 +62,15 @@ def main() -> None:
     )
     manifest = {
         "task": "classification_lora",
-        "source_dir": str(input_dir),
+        "source_dirs": [str(input_dir) for input_dir in input_dirs],
         "output_dir": str(output_dir),
         "max_body_chars": args.max_body_chars,
         "train_records": train_count,
         "validation_records": validation_count,
+        "split_sources": {
+            "train": dict(train_sources),
+            "validation": dict(validation_sources),
+        },
         "target_mapping": {
             "spam": {"category": "spam", "priority": "normal", "confidence": args.spam_confidence},
             "ham": {"category": "other", "priority": "normal", "confidence": args.ham_confidence},
@@ -62,6 +78,20 @@ def main() -> None:
     }
     (output_dir / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(manifest, ensure_ascii=False, indent=2))
+
+
+def _collect_split_rows(input_dirs: list[Path], split: str) -> tuple[list[dict], Counter]:
+    rows = []
+    sources: Counter = Counter()
+    for input_dir in input_dirs:
+        path = input_dir / f"{split}.jsonl"
+        if not path.exists():
+            raise FileNotFoundError(f"missing split file: {path}")
+        source_key = str(input_dir)
+        split_rows = list(_read_jsonl(path))
+        rows.extend(split_rows)
+        sources[source_key] += len(split_rows)
+    return rows, sources
 
 
 def _write_chat_jsonl(

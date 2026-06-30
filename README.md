@@ -304,11 +304,10 @@ The JSON endpoint is `POST /api/process`:
 
 ## Fine-tune classification with LoRA
 
-The first fine-tuning target is classification accuracy on the spam benchmark. Prepare chat-format data from the existing train/validation splits:
+The first fine-tuning target is classification accuracy on the merged spam and phishing benchmarks. Prepare chat-format data from the existing train/validation splits:
 
 ```bash
 python training/prepare_lora_classification_data.py \
-  --input-dir data/processed/spam_benchmark \
   --output-dir data/finetune/classification_lora
 ```
 

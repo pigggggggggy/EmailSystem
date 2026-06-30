@@ -1,6 +1,6 @@
 # LoRA Fine-tuning For Email Classification
 
-This project fine-tunes Qwen3-4B as a classification specialist first. The current spam benchmark has binary labels only, so the supervised target maps:
+This project fine-tunes Qwen3-4B as a classification specialist first. The default training data merges the processed spam and phishing benchmarks, both projected into binary spam/ham labels, so the supervised target maps:
 
 - `spam` -> `{"category":"spam","priority":"normal","confidence":0.95}`
 - `ham` -> `{"category":"other","priority":"normal","confidence":0.90}`
@@ -19,7 +19,6 @@ This writes deterministic train/validation/test splits under `data/processed/spa
 
 ```bash
 python training/prepare_lora_classification_data.py \
-  --input-dir data/processed/spam_benchmark \
   --output-dir data/finetune/classification_lora \
   --max-body-chars 6000
 ```
@@ -32,7 +31,7 @@ data/finetune/classification_lora/validation.jsonl
 data/finetune/classification_lora/manifest.json
 ```
 
-Each row contains `messages` in the same chat format used by the runtime classification prompt.
+Each row contains `messages` in the same chat format used by the runtime classification prompt. By default, `training/prepare_lora_classification_data.py` merges `data/processed/spam_benchmark` and `data/processed/phishing_benchmark`; pass one or more `--input-dir` values to override that set.
 
 ## 3. Install training dependencies
 
