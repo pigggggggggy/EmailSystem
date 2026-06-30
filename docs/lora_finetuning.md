@@ -49,13 +49,16 @@ python training/train_lora_classification.py \
   --train-file data/finetune/classification_lora/train.jsonl \
   --validation-file data/finetune/classification_lora/validation.jsonl \
   --output-dir outputs/lora/qwen3_4b_classification_lora \
-  --max-train-samples 10000 \
-  --max-validation-samples 2000 \
+  --max-train-samples 5000 \
+  --max-validation-samples 1000 \
+  --per-device-train-batch-size 2 \
+  --eval-strategy epoch \
+  --save-strategy epoch \
   --load-in-4bit \
   --bf16
 ```
 
-By default the script shuffles and caps training at 10,000 rows and validation at 2,000 rows. Set either cap to `0` to use the full split. Start with one epoch. If validation loss keeps improving and spam recall is still weak, try two epochs or `--lora-r 32 --lora-alpha 64`.
+By default the script shuffles and caps training at 5,000 rows and validation at 1,000 rows. Set either cap to `0` to use the full split. Start with one epoch. If validation loss keeps improving and spam recall is still weak, try two epochs or `--lora-r 32 --lora-alpha 64`.
 
 ## 5. Merge for simple vLLM evaluation
 

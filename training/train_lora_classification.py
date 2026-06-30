@@ -16,7 +16,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-seq-length", type=int, default=4096)
     parser.add_argument("--epochs", type=float, default=1.0)
     parser.add_argument("--learning-rate", type=float, default=1e-4)
-    parser.add_argument("--per-device-train-batch-size", type=int, default=1)
+    parser.add_argument("--per-device-train-batch-size", type=int, default=2)
     parser.add_argument("--per-device-eval-batch-size", type=int, default=1)
     parser.add_argument("--gradient-accumulation-steps", type=int, default=8)
     parser.add_argument("--lora-r", type=int, default=16)
@@ -26,12 +26,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--fp16", action="store_true", help="Use fp16 training.")
     parser.add_argument("--load-in-4bit", action="store_true", help="Enable QLoRA 4-bit loading with bitsandbytes.")
     parser.add_argument("--logging-steps", type=int, default=10)
+    parser.add_argument("--eval-strategy", default="epoch", choices=["no", "steps", "epoch"])
+    parser.add_argument("--save-strategy", default="epoch", choices=["no", "steps", "epoch"])
     parser.add_argument("--eval-steps", type=int, default=200)
     parser.add_argument("--save-steps", type=int, default=200)
     parser.add_argument("--save-total-limit", type=int, default=2)
     parser.add_argument("--seed", type=int, default=20260630)
-    parser.add_argument("--max-train-samples", type=int, default=10000, help="Shuffle and keep this many train rows; 0 disables the cap.")
-    parser.add_argument("--max-validation-samples", type=int, default=2000, help="Shuffle and keep this many validation rows; 0 disables the cap.")
+    parser.add_argument("--max-train-samples", type=int, default=5000, help="Shuffle and keep this many train rows per epoch; 0 disables the cap.")
+    parser.add_argument("--max-validation-samples", type=int, default=1000, help="Shuffle and keep this many validation rows; 0 disables the cap.")
     return parser.parse_args()
 
 
@@ -137,13 +139,13 @@ def _limit_dataset(split, max_samples: int, *, seed: int):
 
 def _build_training_arguments(training_arguments_cls, args: argparse.Namespace):
     values = _base_training_arg_values(args)
-    values[_training_strategy_argument(training_arguments_cls)] = "steps"
+    values[_eval_strategy_argument(training_arguments_cls)] = args.eval_strategy
     return training_arguments_cls(**_filter_kwargs(training_arguments_cls.__init__, values))
 
 
 def _build_sft_config(sft_config_cls, args: argparse.Namespace):
     values = _base_training_arg_values(args)
-    values[_training_strategy_argument(sft_config_cls)] = "steps"
+    values[_eval_strategy_argument(sft_config_cls)] = args.eval_strategy
     parameters = inspect.signature(sft_config_cls.__init__).parameters
     if "max_length" in parameters:
         values["max_length"] = args.max_seq_length
@@ -164,6 +166,7 @@ def _base_training_arg_values(args: argparse.Namespace) -> dict:
         "gradient_accumulation_steps": args.gradient_accumulation_steps,
         "logging_steps": args.logging_steps,
         "eval_steps": args.eval_steps,
+        "save_strategy": args.save_strategy,
         "save_steps": args.save_steps,
         "save_total_limit": args.save_total_limit,
         "bf16": args.bf16,
@@ -174,7 +177,7 @@ def _base_training_arg_values(args: argparse.Namespace) -> dict:
     }
 
 
-def _training_strategy_argument(arguments_cls) -> str:
+def _eval_strategy_argument(arguments_cls) -> str:
     parameters = inspect.signature(arguments_cls.__init__).parameters
     if "eval_strategy" in parameters:
         return "eval_strategy"

@@ -318,8 +318,11 @@ pip install -e '.[finetune]'
 python training/train_lora_classification.py \
   --model-path models/Qwen3-4B \
   --output-dir outputs/lora/qwen3_4b_classification_lora \
-  --max-train-samples 10000 \
-  --max-validation-samples 2000 \
+  --max-train-samples 5000 \
+  --max-validation-samples 1000 \
+  --per-device-train-batch-size 2 \
+  --eval-strategy epoch \
+  --save-strategy epoch \
   --load-in-4bit \
   --bf16
 ```
@@ -333,7 +336,7 @@ scripts/start_lora_training_detached.sh
 Useful overrides:
 
 ```bash
-GPU_ID=3 RUN_NAME=qwen3_lora_10k MAX_TRAIN_SAMPLES=10000 scripts/start_lora_training_detached.sh
+GPU_ID=3 RUN_NAME=qwen3_lora_5k MAX_TRAIN_SAMPLES=5000 scripts/start_lora_training_detached.sh
 ```
 
 Watch progress or stop the background job:
