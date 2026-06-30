@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 
-PROMPT_VERSION = "email-tasks-20260629-v2"
+PROMPT_VERSION = "email-tasks-20260630-v3"
 
 
 def messages_for_task(prompt: str, task: str) -> list[dict[str, str]]:
@@ -28,7 +28,17 @@ def messages_for_task(prompt: str, task: str) -> list[dict[str, str]]:
             f"{prompt}"
         )
     elif task == "draft_reply":
-        user = f"请根据下面邮件生成一段简洁、专业的中文回复草稿。只输出回复正文。\n\n{prompt}"
+        user = (
+            "请根据下面邮件写一封可直接发送给发件人的中文回复草稿。\n"
+            "要求：\n"
+            "1. 以收件人的身份回复发件人，使用自然礼貌的称呼和结尾。\n"
+            "2. 不要复述或总结原邮件；要针对对方诉求给出回应、下一步或婉拒。\n"
+            "3. 不要编造事实、承诺付款、点击链接、提供隐私信息或代表用户做未确认决定。\n"
+            "4. 如果邮件像广告、陌生交友、钓鱼或垃圾邮件，写成谨慎的拒绝/不回应建议，不要表现出兴趣。\n"
+            "5. 正文建议 80 到 180 个中文字符，必要时可分 2 到 3 个短段落。\n"
+            "只输出回复正文，不要输出标题、分析、JSON 或说明。\n\n"
+            f"{prompt}"
+        )
     else:
         user = prompt
     return [{"role": "system", "content": system}, {"role": "user", "content": user}]
