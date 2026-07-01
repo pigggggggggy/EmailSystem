@@ -367,3 +367,16 @@ python scripts/run_independent_eval.py \
 ```
 
 See [docs/lora_finetuning.md](docs/lora_finetuning.md) for the full workflow and tuning notes.
+
+## Train the EAGLE3 draft
+
+Prepare AngelSlim conversation data and train a new EAGLE3 draft against the merged email target model:
+
+```bash
+python training/prepare_eagle3_data.py
+conda activate eagle3
+scripts/setup_angelslim_eagle3.sh
+scripts/start_eagle3_training_detached.sh
+```
+
+See [docs/eagle3_training.md](docs/eagle3_training.md) for environment isolation, foreground training, overrides, logs, and stopping the job.

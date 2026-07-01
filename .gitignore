@@ -238,3 +238,6 @@ data/finetune/
 # Gmail OAuth credentials and tokens
 /secrets/
 data/auth/
+
+# External training toolkits
+/third_party/AngelSlim/
