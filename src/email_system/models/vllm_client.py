@@ -8,6 +8,15 @@ from .base import GenerationResult
 from .chat_prompts import messages_for_task
 
 
+def truncate_token_ids(token_ids: list[int], limit: int) -> list[int]:
+    if limit <= 0:
+        raise ValueError("max_model_len must be greater than max_tokens")
+    if len(token_ids) <= limit:
+        return token_ids
+    prefix_size = limit * 3 // 4
+    return token_ids[:prefix_size] + token_ids[-(limit - prefix_size):]
+
+
 class VLLMClient:
     """Local vLLM backend for Qwen-style chat models."""
 
@@ -30,6 +39,7 @@ class VLLMClient:
             raise RuntimeError("The vLLM backend requires vllm. Install it with: pip install -e '.[vllm]'") from exc
 
         self.model_path = str(model_path)
+        self.max_model_len = max_model_len
         self.sampling_params_cls = SamplingParams
         kwargs: dict[str, Any] = {
             "model": self.model_path,
@@ -54,8 +64,12 @@ class VLLMClient:
     def generate(self, prompt: str, *, task: str, max_tokens: int = 512) -> GenerationResult:
         start = time.perf_counter()
         rendered_prompt = self._render_prompt(messages_for_task(prompt, task))
+        token_ids = self.tokenizer.encode(rendered_prompt, add_special_tokens=False)
+        if self.max_model_len is not None:
+            token_ids = truncate_token_ids(token_ids, self.max_model_len - max_tokens)
         sampling_params = self.sampling_params_cls(temperature=0.0, max_tokens=max_tokens)
-        outputs = self.llm.generate([rendered_prompt], sampling_params, use_tqdm=False)
+        token_prompt = {"prompt_token_ids": token_ids}
+        outputs = self.llm.generate([token_prompt], sampling_params, use_tqdm=False)
         request_output = outputs[0]
         completion = request_output.outputs[0]
         text = completion.text.strip()

@@ -85,6 +85,7 @@ python scripts/run_independent_eval.py \
 ```
 
 Omit `--eagle3-model-path` to run the target-only baseline. EAGLE3 changes decoding speed, not the target model classification behavior.
+The vLLM client tokenizes and truncates overlong email prompts automatically while reserving the requested output-token budget.
 
 
 Run the FastAPI Agent on the last GPU:
