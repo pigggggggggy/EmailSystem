@@ -11,5 +11,6 @@ if [[ ! -d "$ANGELSLIM_DIR/.git" ]]; then
 fi
 git -C "$ANGELSLIM_DIR" fetch origin "$ANGELSLIM_COMMIT"
 git -C "$ANGELSLIM_DIR" checkout --detach "$ANGELSLIM_COMMIT"
+"$PYTHON_BIN" "$ROOT_DIR/training/patch_angelslim_attention.py" --angelslim-dir "$ANGELSLIM_DIR"
 "$PYTHON_BIN" -m pip install -e "${ANGELSLIM_DIR}[speculative]"
 echo "AngelSlim ready: $ANGELSLIM_DIR @ $ANGELSLIM_COMMIT"

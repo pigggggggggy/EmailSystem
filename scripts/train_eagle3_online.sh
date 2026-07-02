@@ -18,6 +18,7 @@ GRADIENT_ACCUMULATION_STEPS="${GRADIENT_ACCUMULATION_STEPS:-4}"
 LEARNING_RATE="${LEARNING_RATE:-1e-4}"
 NUM_PROC="${NUM_PROC:-8}"
 SAVE_TOTAL_LIMIT="${SAVE_TOTAL_LIMIT:-2}"
+TARGET_ATTN_IMPLEMENTATION="${TARGET_ATTN_IMPLEMENTATION:-sdpa}"
 EXTRA_ARGS="${EXTRA_ARGS:-}"
 DRY_RUN="${DRY_RUN:-0}"
 for required in "$ANGELSLIM_DIR/tools/train_eagle3_online.py" "$TARGET_MODEL/config.json" "$DRAFT_CONFIG" "$TRAIN_DATA" "$EVAL_DATA" "$DEEPSPEED_CONFIG"; do
@@ -42,7 +43,9 @@ if [[ -n "$EXTRA_ARGS" ]]; then
   command+=("${extra_args_array[@]}")
 fi
 printf 'Command: '; printf '%q ' "${command[@]}"; echo
+echo "Target attention implementation: $TARGET_ATTN_IMPLEMENTATION"
 if [[ "$DRY_RUN" == "1" ]]; then
   exit 0
 fi
-CUDA_VISIBLE_DEVICES="$GPU_IDS" "${command[@]}"
+ANGELSLIM_TARGET_ATTN_IMPLEMENTATION="$TARGET_ATTN_IMPLEMENTATION" \
+  CUDA_VISIBLE_DEVICES="$GPU_IDS" "${command[@]}"
