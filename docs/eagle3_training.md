@@ -45,8 +45,8 @@ Defaults:
 ```text
 target: models/Qwen3-4B-email-classifier-ckpt1563
 GPUs: 0,1,2,3
-DeepSpeed: ZeRO-3 with CPU optimizer offload
-context length: 2048
+DeepSpeed: ZeRO-3 with PyTorch AdamW state offload (no CUDA extension build)
+context length: 512 (fits 16 GB GPUs; override when memory permits)
 epochs: 3
 effective batch: 4 GPUs x batch 1 x accumulation 4 = 16
 checkpoints: every epoch, keep 2
