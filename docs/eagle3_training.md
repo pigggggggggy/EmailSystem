@@ -115,3 +115,37 @@ CUDA_VISIBLE_DEVICES=3 python scripts/run_imap_agent.py \
   --limit 10 \
   --output outputs/predictions/qwen_eagle3_imap_predictions.jsonl
 ```
+
+## 6. Train a mixed-task draft from parent-model outputs
+
+The target model can generate all supervision automatically. Human-written summary, action-item, and reply labels are not required. The generator uses the same four prompts as the Agent, validates outputs, keeps each task balanced, and resumes by conversation ID after interruption.
+
+Generate 2,500 accepted conversations per task for training and 250 per task for validation:
+
+```bash
+conda activate vllm
+CUDA_VISIBLE_DEVICES=3 python training/generate_eagle3_distillation_data.py
+```
+
+The default output is `data/finetune/eagle3_mixed`. Invalid, empty, and length-truncated teacher responses are written to `*_rejected.jsonl`. A 2x deterministic candidate pool is used to replace rejected responses until each task reaches its target count.
+
+Run generation detached from the terminal:
+
+```bash
+conda activate vllm
+GPU_ID=3 scripts/start_eagle3_distillation_detached.sh
+tail -f outputs/logs/qwen3_4b_email_eagle3_distillation.log
+scripts/kill_eagle3_distillation.sh
+```
+
+Rerunning the same generation command resumes existing output. If generation arguments or the prompt version change, use a new `--output-dir`; mixing incompatible runs is rejected.
+
+Train a fresh mixed-task EAGLE3 draft:
+
+```bash
+conda activate eagle3
+scripts/start_eagle3_mixed_training_detached.sh
+tail -f outputs/logs/qwen3_4b_email_eagle3_mixed.log
+```
+
+The mixed checkpoint is written under `outputs/eagle3/qwen3_4b_email_mixed`. It remains paired with `models/Qwen3-4B-email-classifier-ckpt1563` and does not replace the classification-only draft.

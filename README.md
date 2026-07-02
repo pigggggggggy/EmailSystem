@@ -379,4 +379,4 @@ scripts/setup_angelslim_eagle3.sh
 scripts/start_eagle3_training_detached.sh
 ```
 
-See [docs/eagle3_training.md](docs/eagle3_training.md) for environment isolation, foreground training, overrides, logs, and stopping the job.
+See [docs/eagle3_training.md](docs/eagle3_training.md) for environment isolation, foreground training, overrides, logs, and stopping the job. The guide also includes resumable parent-model distillation for balanced classification, summary, action-item, and reply training.
