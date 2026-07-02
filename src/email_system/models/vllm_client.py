@@ -21,6 +21,8 @@ class VLLMClient:
         gpu_memory_utilization: float = 0.9,
         trust_remote_code: bool = True,
         enforce_eager: bool = False,
+        speculative_model_path: str | Path | None = None,
+        speculative_tokens: int = 3,
     ) -> None:
         try:
             from vllm import LLM, SamplingParams
@@ -40,6 +42,12 @@ class VLLMClient:
         }
         if max_model_len is not None:
             kwargs["max_model_len"] = max_model_len
+        if speculative_model_path is not None:
+            kwargs.update(
+                spec_method="eagle3",
+                spec_model=str(speculative_model_path),
+                spec_tokens=speculative_tokens,
+            )
         self.llm = LLM(**kwargs)
         self.tokenizer = self.llm.get_tokenizer()
 

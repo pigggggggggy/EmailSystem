@@ -31,6 +31,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output", default="outputs/predictions/imap_predictions.jsonl")
     parser.add_argument("--backend", default="vllm", choices=["mock", "transformers", "vllm"])
     parser.add_argument("--model-path", default="models/Qwen3-4B")
+    parser.add_argument("--eagle3-model-path", default=None)
+    parser.add_argument("--speculative-tokens", type=int, default=3)
     parser.add_argument(
         "--allow-fallback-graph",
         action="store_true",
@@ -94,6 +96,8 @@ def main() -> None:
         max_model_len=args.max_model_len,
         tensor_parallel_size=args.tensor_parallel_size,
         gpu_memory_utilization=args.gpu_memory_utilization,
+        speculative_model_path=args.eagle3_model_path,
+        speculative_tokens=args.speculative_tokens,
     )
     workflow = EmailAgentWorkflow(llm)
     if not args.allow_fallback_graph and workflow.graph_backend != "langgraph":

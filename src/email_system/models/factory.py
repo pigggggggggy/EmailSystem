@@ -18,6 +18,8 @@ def build_llm_client(
     tensor_parallel_size: int = 1,
     gpu_memory_utilization: float = 0.9,
     enforce_eager: bool = False,
+    speculative_model_path: str | Path | None = None,
+    speculative_tokens: int = 3,
 ) -> LLMClient:
     if backend == "mock":
         return MockLLMClient()
@@ -31,5 +33,7 @@ def build_llm_client(
             tensor_parallel_size=tensor_parallel_size,
             gpu_memory_utilization=gpu_memory_utilization,
             enforce_eager=enforce_eager,
+            speculative_model_path=speculative_model_path,
+            speculative_tokens=speculative_tokens,
         )
     raise ValueError(f"Unsupported backend: {backend}")

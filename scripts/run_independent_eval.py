@@ -29,6 +29,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--run-dir", default=None)
     parser.add_argument("--backend", default="vllm", choices=["mock", "transformers", "vllm"])
     parser.add_argument("--model-path", default="models/Qwen3-4B")
+    parser.add_argument("--eagle3-model-path", default=None)
+    parser.add_argument("--speculative-tokens", type=int, default=3)
     parser.add_argument("--quality-limit", type=int, default=None)
     parser.add_argument("--max-body-chars", type=int, default=6000)
     parser.add_argument("--speed-limit", type=int, default=100)
@@ -78,6 +80,8 @@ def main() -> None:
         tensor_parallel_size=args.tensor_parallel_size,
         gpu_memory_utilization=args.gpu_memory_utilization,
         enforce_eager=not args.use_compiled_graphs,
+        speculative_model_path=args.eagle3_model_path,
+        speculative_tokens=args.speculative_tokens,
     )
 
     metrics = {}

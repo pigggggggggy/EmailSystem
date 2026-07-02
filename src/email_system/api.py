@@ -155,6 +155,8 @@ def _workflow() -> EmailAgentWorkflow:
         tensor_parallel_size=int(_setting("TENSOR_PARALLEL_SIZE", "1")),
         gpu_memory_utilization=float(_setting("GPU_MEMORY_UTILIZATION", "0.75")),
         enforce_eager=_setting("ENFORCE_EAGER", "true").lower() in {"1", "true", "yes"},
+        speculative_model_path=_setting("EAGLE3_MODEL_PATH", "") or None,
+        speculative_tokens=int(_setting("SPECULATIVE_TOKENS", "3")),
     )
     return EmailAgentWorkflow(llm)
 

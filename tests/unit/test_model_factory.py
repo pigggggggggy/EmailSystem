@@ -17,6 +17,8 @@ class ModelFactoryTest(unittest.TestCase):
                 tensor_parallel_size=2,
                 gpu_memory_utilization=0.8,
                 enforce_eager=True,
+                speculative_model_path="outputs/eagle3/checkpoint",
+                speculative_tokens=5,
             )
 
         client_cls.assert_called_once_with(
@@ -26,6 +28,8 @@ class ModelFactoryTest(unittest.TestCase):
             tensor_parallel_size=2,
             gpu_memory_utilization=0.8,
             enforce_eager=True,
+            speculative_model_path="outputs/eagle3/checkpoint",
+            speculative_tokens=5,
         )
 
     def test_reject_unknown_backend(self):

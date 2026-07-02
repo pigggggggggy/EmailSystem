@@ -68,3 +68,49 @@ scripts/kill_eagle3_training.sh qwen3_4b_email_eagle3
 ```
 
 The existing `models/Qwen3-4B_eagle3` checkpoint is not overwritten. AngelSlim initializes a fresh draft from `training/configs/qwen3_4b_email_eagle3.json` because its online trainer accepts a draft config, not a warm-start checkpoint path.
+
+## 5. Use the trained draft with vLLM
+
+The draft must be paired with the exact target model used during training:
+
+```bash
+python scripts/run_independent_eval.py \
+  --backend vllm \
+  --model-path models/Qwen3-4B-email-classifier-ckpt1563 \
+  --eagle3-model-path outputs/eagle3/qwen3_4b_email_classifier/checkpoint-939 \
+  --speculative-tokens 3 \
+  --quality-limit 20 \
+  --speed-limit 10 \
+  --run-dir outputs/runs/qwen3_4b_eagle3_smoke
+```
+
+Omit `--eagle3-model-path` to run the target-only baseline. EAGLE3 changes decoding speed, not the target model classification behavior.
+
+
+Run the FastAPI Agent on the last GPU:
+
+```bash
+CUDA_VISIBLE_DEVICES=3 python scripts/run_api.py \
+  --backend vllm \
+  --model-path models/Qwen3-4B-email-classifier-ckpt1563 \
+  --eagle3-model-path outputs/eagle3/qwen3_4b_email_classifier/checkpoint-939 \
+  --speculative-tokens 3 \
+  --max-model-len 2048 \
+  --gpu-memory-utilization 0.9
+```
+
+Run the LangGraph Agent on recent Gmail messages over IMAP:
+
+```bash
+CUDA_VISIBLE_DEVICES=3 python scripts/run_imap_agent.py \
+  --backend vllm \
+  --model-path models/Qwen3-4B-email-classifier-ckpt1563 \
+  --eagle3-model-path outputs/eagle3/qwen3_4b_email_classifier/checkpoint-939 \
+  --speculative-tokens 3 \
+  --max-model-len 2048 \
+  --gpu-memory-utilization 0.9 \
+  --user "$EMAILSYSTEM_IMAP_USER" \
+  --password-env EMAILSYSTEM_IMAP_PASSWORD \
+  --limit 10 \
+  --output outputs/predictions/qwen_eagle3_imap_predictions.jsonl
+```
