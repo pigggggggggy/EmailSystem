@@ -31,7 +31,7 @@ scripts/setup_angelslim_eagle3.sh
 
 The setup script pins the inspected AngelSlim commit and installs the `speculative` extra under `third_party/AngelSlim`.
 
-It also patches AngelSlim to use PyTorch SDPA for the target model, so `flash-attn` is not required. If FlashAttention2 is installed and compatible, opt in with `TARGET_ATTN_IMPLEMENTATION=flash_attention_2`.
+It also applies compatibility fixes for Qwen3 LLM dataset registration and uses PyTorch SDPA for the target model, so `flash-attn` is not required. If FlashAttention2 is installed and compatible, opt in with `TARGET_ATTN_IMPLEMENTATION=flash_attention_2`.
 
 ## 3. Train on four GPUs
 
