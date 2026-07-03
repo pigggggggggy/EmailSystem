@@ -5,6 +5,7 @@ import argparse
 import inspect
 import json
 import math
+import random
 from pathlib import Path
 
 
@@ -35,6 +36,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--seed", type=int, default=20260630)
     parser.add_argument("--max-train-samples", type=int, default=5000, help="Shuffle and keep this many train rows per epoch; 0 disables the cap.")
     parser.add_argument("--max-validation-samples", type=int, default=1000, help="Shuffle and keep this many validation rows; 0 disables the cap.")
+    parser.add_argument(
+        "--balance-category-labels",
+        action="store_true",
+        help="Sample training rows evenly by category_label, with deterministic oversampling for rare classes.",
+    )
     parser.add_argument(
         "--resample-train-each-epoch",
         action=argparse.BooleanOptionalAction,
@@ -150,10 +156,20 @@ def _prepare_train_dataset(split, args: argparse.Namespace, concatenate_datasets
         or args._logical_epochs <= 1
         or len(split) <= args.max_train_samples
     ):
-        return _limit_dataset(split, args.max_train_samples, seed=args.seed)
+        return _limit_dataset(
+            split,
+            args.max_train_samples,
+            seed=args.seed,
+            balance_category_labels=getattr(args, "balance_category_labels", False),
+        )
 
     pieces = [
-        _limit_dataset(split, args.max_train_samples, seed=args.seed + epoch_index)
+        _limit_dataset(
+            split,
+            args.max_train_samples,
+            seed=args.seed + epoch_index,
+            balance_category_labels=getattr(args, "balance_category_labels", False),
+        )
         for epoch_index in range(args._logical_epochs)
     ]
     args._effective_epochs = 1.0
@@ -189,10 +205,45 @@ def _configure_logical_epoch_strategies(args: argparse.Namespace) -> None:
         args._effective_save_steps = args._steps_per_logical_epoch
 
 
-def _limit_dataset(split, max_samples: int, *, seed: int):
+def _limit_dataset(
+    split,
+    max_samples: int,
+    *,
+    seed: int,
+    balance_category_labels: bool = False,
+):
+    if balance_category_labels:
+        sample_count = max_samples if max_samples > 0 else len(split)
+        return _balanced_category_dataset(split, sample_count, seed=seed)
     if max_samples <= 0 or len(split) <= max_samples:
         return split
     return split.shuffle(seed=seed).select(range(max_samples))
+
+
+def _balanced_category_dataset(split, sample_count: int, *, seed: int):
+    groups: dict[str, list[int]] = {}
+    for index in range(len(split)):
+        row = split[index]
+        category = row.get("category_label") or (row.get("labels") or {}).get("category")
+        if not category:
+            raise ValueError("--balance-category-labels requires category_label or labels.category on every row")
+        groups.setdefault(str(category), []).append(index)
+    if not groups or sample_count <= 0:
+        return split.select([])
+
+    rng = random.Random(seed)
+    labels = sorted(groups)
+    for indexes in groups.values():
+        rng.shuffle(indexes)
+    selected = []
+    offsets = {label: 0 for label in labels}
+    for position in range(sample_count):
+        label = labels[position % len(labels)]
+        indexes = groups[label]
+        selected.append(indexes[offsets[label] % len(indexes)])
+        offsets[label] += 1
+    rng.shuffle(selected)
+    return split.select(selected)
 
 
 def _build_training_arguments(training_arguments_cls, args: argparse.Namespace):

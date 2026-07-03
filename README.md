@@ -380,3 +380,15 @@ scripts/start_eagle3_training_detached.sh
 ```
 
 See [docs/eagle3_training.md](docs/eagle3_training.md) for environment isolation, foreground training, overrides, logs, and stopping the job. The guide also includes resumable parent-model distillation for balanced classification, summary, action-item, and reply training.
+
+## Multiclass consensus labeling
+
+Generate seven-category LoRA data by retaining only labels on which two OpenAI-compatible teacher models agree:
+
+```bash
+export EMAILSYSTEM_LABEL_API_URL="http://<label-server>/v1/chat/completions"
+export EMAILSYSTEM_LABEL_API_KEY="<new-api-key>"
+scripts/start_multiclass_labeling_detached.sh
+```
+
+See [docs/multiclass_labeling.md](docs/multiclass_labeling.md) for resumable labeling, category-balanced LoRA training, audit files, and multiclass evaluation.

@@ -14,6 +14,7 @@ from email_system.evaluation.independent_benchmark import (
     TASKS,
     classification_quality_metrics,
     run_classification_quality,
+    resolve_quality_mode,
     run_task_speed,
     select_benchmark_rows,
     truncate_body_text,
@@ -32,6 +33,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--eagle3-model-path", default=None)
     parser.add_argument("--speculative-tokens", type=int, default=3)
     parser.add_argument("--quality-limit", type=int, default=None)
+    parser.add_argument("--quality-mode", choices=["auto", "binary", "multiclass"], default="auto")
     parser.add_argument("--max-body-chars", type=int, default=6000)
     parser.add_argument("--speed-limit", type=int, default=100)
     parser.add_argument("--speed-warmup", type=int, default=2)
@@ -58,7 +60,10 @@ def main() -> None:
     if args.skip_quality and args.skip_speed:
         raise SystemExit("Both quality and speed phases are disabled.")
     rows = truncate_body_text(read_jsonl(args.input), args.max_body_chars)
-    quality_rows = select_benchmark_rows(rows, args.quality_limit, seed=args.seed)
+    resolved_quality_mode = resolve_quality_mode(rows, args.quality_mode)
+    quality_rows = select_benchmark_rows(
+        rows, args.quality_limit, seed=args.seed, label_mode=resolved_quality_mode
+    )
     speed_rows = select_benchmark_rows(rows, args.speed_limit, seed=args.seed)
     run_dir = Path(args.run_dir) if args.run_dir else Path("outputs/runs") / datetime.now(timezone.utc).strftime(
         f"%Y%m%d_%H%M%S_{args.backend}_independent"
@@ -67,6 +72,7 @@ def main() -> None:
     config = vars(args).copy()
     config["resume"] = False
     config["input_records"] = len(rows)
+    config["resolved_quality_mode"] = resolved_quality_mode
     config["prompt_version"] = PROMPT_VERSION
     _prepare_config(run_dir / "config.json", config, resume=args.resume)
 
@@ -92,6 +98,7 @@ def main() -> None:
             quality_rows,
             run_dir / "classification_predictions.jsonl",
             resume=args.resume,
+            quality_mode=resolved_quality_mode,
         )
         metrics["quality"] = {"classification": quality_metrics}
 
@@ -123,7 +130,9 @@ def _prepare_config(path: Path, config: dict, *, resume: bool) -> None:
     path.write_text(json.dumps(config, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
-def _run_quality_with_checkpoints(llm, rows: list[dict], output_path: Path, *, resume: bool):
+def _run_quality_with_checkpoints(
+    llm, rows: list[dict], output_path: Path, *, resume: bool, quality_mode: str
+):
     existing = read_jsonl(output_path) if resume and output_path.exists() else []
     target_ids = [str(row["email_id"]) for row in rows]
     target_id_set = set(target_ids)
@@ -145,7 +154,7 @@ def _run_quality_with_checkpoints(llm, rows: list[dict], output_path: Path, *, r
     with output_path.open("a", encoding="utf-8") as handle:
         for start in range(0, len(remaining), checkpoint_size):
             batch = remaining[start : start + checkpoint_size]
-            predictions, _ = run_classification_quality(llm, batch)
+            predictions, _ = run_classification_quality(llm, batch, quality_mode=quality_mode)
             for prediction in predictions:
                 handle.write(json.dumps(prediction, ensure_ascii=False) + "\n")
             handle.flush()
@@ -166,9 +175,8 @@ def render_report(metrics: dict) -> str:
                 "## Classification Quality",
                 f"- Samples: {classification['samples']}",
                 f"- Accuracy: {classification['accuracy']:.4f}",
+                f"- Mode: {classification.get('quality_mode', 'binary')}",
                 f"- Macro F1: {classification['macro_f1']:.4f}",
-                f"- Spam precision: {classification['spam_precision']:.4f}",
-                f"- Spam recall: {classification['spam_recall']:.4f}",
                 f"- Parse success: {classification['parse_success_rate']:.4f}",
                 f"- Valid category: {classification['valid_category_rate']:.4f}",
                 f"- Low-confidence rate (<{classification['confidence_threshold']:.2f}): {classification['low_confidence_rate']:.4f}",
@@ -177,6 +185,19 @@ def render_report(metrics: dict) -> str:
                 "",
             ]
         )
+        if classification.get("quality_mode", "binary") == "binary":
+            lines[-1:-1] = [
+                f"- Spam precision: {classification['spam_precision']:.4f}",
+                f"- Spam recall: {classification['spam_recall']:.4f}",
+            ]
+        else:
+            lines.extend(["### Per-class Quality", "", "| Category | Precision | Recall | F1 | Support |", "| --- | ---: | ---: | ---: | ---: |"])
+            for category, values in classification.get("per_class", {}).items():
+                lines.append(
+                    f"| {category} | {values['precision']:.4f} | {values['recall']:.4f} | "
+                    f"{values['f1']:.4f} | {values['support']} |"
+                )
+            lines.append("")
     by_task = metrics.get("speed", {}).get("by_task", {})
     if by_task:
         lines.extend(["## Per-task Speed", "", "| Task | p50 ms | p95 ms | p99 ms | req/s | output tok/s | parse success |", "| --- | ---: | ---: | ---: | ---: | ---: | ---: |"])

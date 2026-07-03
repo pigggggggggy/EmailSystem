@@ -17,40 +17,63 @@ from .metrics import classification_metrics
 TASKS = ("classify_email", "summarize_email", "extract_action_items", "draft_reply")
 
 
+def resolve_quality_mode(rows: list[dict], requested: str = "auto") -> str:
+    if requested not in {"auto", "binary", "multiclass"}:
+        raise ValueError(f"unsupported quality mode: {requested}")
+    if requested != "auto":
+        mode = requested
+    else:
+        mode = "multiclass" if rows and all(_gold_category(row) in VALID_CATEGORIES for row in rows) else "binary"
+    if mode == "multiclass" and any(_gold_category(row) not in VALID_CATEGORIES for row in rows):
+        raise ValueError("multiclass quality mode requires labels.category on every row")
+    return mode
+
+
 def run_classification_quality(
     llm: LLMClient,
     rows: list[dict],
     *,
+    quality_mode: str = "auto",
     progress_callback: Callable[[int, int], None] | None = None,
 ) -> tuple[list[dict], dict]:
+    mode = resolve_quality_mode(rows, quality_mode)
     skill = ClassifyEmailSkill()
     predictions = []
     for index, row in enumerate(rows, start=1):
         email = Email.from_dict(row)
         output = skill.run(email, {}, llm)
         predicted_category = str(output.get("category", "other"))
-        gold_label = _gold_spam_label(row)
         invalid = bool(output.get("parse_error")) or predicted_category not in VALID_CATEGORIES
         confidence = float(output.get("confidence", 0.0))
         low_confidence = bool(output.get("low_confidence", confidence < LOW_CONFIDENCE_THRESHOLD))
-        if invalid:
-            predicted_label = "ham" if gold_label == "spam" else "spam"
+        if mode == "multiclass":
+            gold_label = _gold_category(row)
+            predicted_label = predicted_category if not invalid else _wrong_category(gold_label)
         else:
-            predicted_label = "spam" if predicted_category == "spam" else "ham"
-        predictions.append(
-            {
-                "email_id": email.email_id,
-                "gold_spam_label": gold_label,
-                "predicted_spam_label": predicted_label,
-                "predicted_category": predicted_category,
-                "confidence": confidence,
-                "low_confidence": low_confidence,
-                "accepted_prediction": not invalid and not low_confidence,
-                "parse_error": output.get("parse_error"),
-                "valid_category": not invalid,
-                "usage": output.get("usage", {}),
-            }
-        )
+            gold_label = _gold_spam_label(row)
+            predicted_label = (
+                ("spam" if predicted_category == "spam" else "ham")
+                if not invalid
+                else ("ham" if gold_label == "spam" else "spam")
+            )
+        prediction = {
+            "email_id": email.email_id,
+            "quality_mode": mode,
+            "gold_label": gold_label,
+            "predicted_label": predicted_label,
+            "predicted_category": predicted_category,
+            "confidence": confidence,
+            "low_confidence": low_confidence,
+            "accepted_prediction": not invalid and not low_confidence,
+            "parse_error": output.get("parse_error"),
+            "valid_category": not invalid,
+            "usage": output.get("usage", {}),
+        }
+        if mode == "multiclass":
+            prediction.update(gold_category=gold_label, scored_category=predicted_label)
+        else:
+            prediction.update(gold_spam_label=gold_label, predicted_spam_label=predicted_label)
+        predictions.append(prediction)
         if progress_callback is not None:
             progress_callback(index, len(rows))
 
@@ -59,10 +82,14 @@ def run_classification_quality(
 
 
 def classification_quality_metrics(predictions: list[dict]) -> dict:
-    y_true = [row["gold_spam_label"] for row in predictions]
-    y_pred = [row["predicted_spam_label"] for row in predictions]
+    mode = predictions[0].get("quality_mode", "binary") if predictions else "binary"
+    y_true = [row.get("gold_label", row.get("gold_spam_label")) for row in predictions]
+    y_pred = [row.get("predicted_label", row.get("predicted_spam_label")) for row in predictions]
     metrics = classification_metrics(y_true, y_pred)
-    metrics["confusion_matrix"] = _binary_confusion(y_true, y_pred)
+    metrics["quality_mode"] = mode
+    metrics["confusion_matrix"] = (
+        _multiclass_confusion(y_true, y_pred) if mode == "multiclass" else _binary_confusion(y_true, y_pred)
+    )
     metrics["spam_precision"] = metrics["per_class"].get("spam", {}).get("precision", 0.0)
     metrics["spam_recall"] = metrics["per_class"].get("spam", {}).get("recall", 0.0)
     metrics["parse_success_rate"] = _success_rate(row.get("parse_error") for row in predictions)
@@ -73,14 +100,18 @@ def classification_quality_metrics(predictions: list[dict]) -> dict:
     metrics["low_confidence_rate"] = metrics["low_confidence_count"] / len(predictions) if predictions else 0.0
     metrics["accepted_coverage"] = len(accepted) / len(predictions) if predictions else 0.0
     metrics["accepted_accuracy"] = (
-        sum(row["gold_spam_label"] == row["predicted_spam_label"] for row in accepted) / len(accepted)
+        sum(
+            row.get("gold_label", row.get("gold_spam_label"))
+            == row.get("predicted_label", row.get("predicted_spam_label"))
+            for row in accepted
+        )
+        / len(accepted)
         if accepted
         else 0.0
     )
     metrics["predicted_categories"] = dict(sorted(Counter(row["predicted_category"] for row in predictions).items()))
     metrics["samples"] = len(predictions)
     return metrics
-
 
 def run_task_speed(
     llm: LLMClient,
@@ -176,19 +207,27 @@ def truncate_body_text(rows: list[dict], max_body_chars: int | None) -> list[dic
     return truncated
 
 
-def select_benchmark_rows(rows: list[dict], limit: int | None, *, seed: int = 20260629) -> list[dict]:
+def select_benchmark_rows(
+    rows: list[dict],
+    limit: int | None,
+    *,
+    seed: int = 20260629,
+    label_mode: str = "binary",
+) -> list[dict]:
     if limit is None or limit >= len(rows):
         return list(rows)
     if limit < 1:
         return []
+    if label_mode not in {"binary", "multiclass"}:
+        raise ValueError(f"unsupported label mode: {label_mode}")
 
-    groups: dict[str, list[dict]] = {"ham": [], "spam": []}
+    groups: dict[str, list[dict]] = {}
     for row in rows:
-        groups[_gold_spam_label(row)].append(row)
-
+        label = _gold_category(row) if label_mode == "multiclass" else _gold_spam_label(row)
+        if label:
+            groups.setdefault(label, []).append(row)
+    allocations = _balanced_allocations({label: len(items) for label, items in groups.items()}, limit)
     selected = []
-    allocations = {"ham": limit // 2, "spam": limit // 2}
-    allocations["spam"] += limit - sum(allocations.values())
     for label, allocation in allocations.items():
         ordered = sorted(
             groups[label],
@@ -197,6 +236,18 @@ def select_benchmark_rows(rows: list[dict], limit: int | None, *, seed: int = 20
         selected.extend(_evenly_spaced(ordered, allocation))
     return sorted(selected, key=lambda row: _stable_key(seed, str(row.get("email_id", ""))))
 
+
+def _balanced_allocations(sizes: dict[str, int], limit: int) -> dict[str, int]:
+    allocations = {label: 0 for label in sorted(sizes)}
+    while sum(allocations.values()) < limit:
+        eligible = [label for label in allocations if allocations[label] < sizes[label]]
+        if not eligible:
+            break
+        for label in eligible:
+            if sum(allocations.values()) >= limit:
+                break
+            allocations[label] += 1
+    return allocations
 
 def _task_runners() -> dict[str, Callable[[Email, LLMClient], dict]]:
     classifier = ClassifyEmailSkill()
@@ -211,6 +262,16 @@ def _task_runners() -> dict[str, Callable[[Email, LLMClient], dict]]:
     }
 
 
+def _gold_category(row: dict) -> str | None:
+    labels = row.get("labels") or {}
+    value = labels.get("category", row.get("category_label"))
+    return str(value) if value in VALID_CATEGORIES else None
+
+
+def _wrong_category(gold: str) -> str:
+    return next(category for category in sorted(VALID_CATEGORIES) if category != gold)
+
+
 def _gold_spam_label(row: dict) -> str:
     labels = row.get("labels") or {}
     value = labels.get("spam_label")
@@ -219,6 +280,17 @@ def _gold_spam_label(row: dict) -> str:
     if "spam" in labels:
         return "spam" if bool(labels["spam"]) else "ham"
     return "spam" if labels.get("category") == "spam" else "ham"
+
+
+def _multiclass_confusion(y_true: list[str], y_pred: list[str]) -> dict[str, dict[str, int]]:
+    labels = sorted(set(y_true) | set(y_pred))
+    return {
+        true_label: {
+            predicted_label: sum(t == true_label and p == predicted_label for t, p in zip(y_true, y_pred))
+            for predicted_label in labels
+        }
+        for true_label in labels
+    }
 
 
 def _binary_confusion(y_true: list[str], y_pred: list[str]) -> dict[str, int]:

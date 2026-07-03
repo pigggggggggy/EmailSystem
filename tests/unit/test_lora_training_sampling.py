@@ -11,6 +11,9 @@ class FakeSplit:
     def __len__(self):
         return len(self.values)
 
+    def __getitem__(self, index):
+        return self.values[index]
+
     def shuffle(self, *, seed):
         offset = seed % len(self.values)
         return FakeSplit(self.values[offset:] + self.values[:offset])
@@ -73,6 +76,26 @@ class LoraTrainingSamplingTest(unittest.TestCase):
         self.assertEqual(len(sampled), 4)
         self.assertEqual(parsed._effective_epochs, 3.0)
         self.assertIsNone(parsed._steps_per_logical_epoch)
+
+    def test_balances_multiclass_categories_with_oversampling(self):
+        values = [
+            {"category_label": "spam", "id": index} for index in range(5)
+        ] + [
+            {"category_label": "invoice", "id": 5},
+            {"category_label": "support", "id": 6},
+        ]
+        parsed = args(
+            epochs=1.0,
+            max_train_samples=9,
+            balance_category_labels=True,
+        )
+
+        sampled = _prepare_train_dataset(FakeSplit(values), parsed, concat)
+
+        counts = {}
+        for item in sampled.values:
+            counts[item["category_label"]] = counts.get(item["category_label"], 0) + 1
+        self.assertEqual(counts, {"invoice": 3, "spam": 3, "support": 3})
 
 
 if __name__ == "__main__":

@@ -114,6 +114,35 @@ class IndependentBenchmarkTest(unittest.TestCase):
         self.assertEqual(labels.count("spam"), 3)
         self.assertEqual(labels.count("ham"), 3)
 
+    def test_multiclass_quality_uses_category_labels(self):
+        rows = [
+            {**row(1, "ham", "hello"), "labels": {"category": "personal"}},
+            {**row(2, "spam", "BUY NOW"), "labels": {"category": "spam"}},
+        ]
+
+        predictions, metrics = run_classification_quality(FixtureLLM(), rows)
+
+        self.assertEqual(metrics["quality_mode"], "multiclass")
+        self.assertEqual(metrics["accuracy"], 1.0)
+        self.assertEqual(predictions[0]["gold_category"], "personal")
+        self.assertIn("personal", metrics["confusion_matrix"])
+
+    def test_multiclass_selection_balances_available_categories(self):
+        rows = []
+        for category in ("invoice", "support", "spam"):
+            for index in range(5):
+                item = row(len(rows), "spam" if category == "spam" else "ham", category)
+                item["labels"]["category"] = category
+                rows.append(item)
+
+        selected = select_benchmark_rows(rows, 6, seed=5, label_mode="multiclass")
+
+        counts = {}
+        for item in selected:
+            category = item["labels"]["category"]
+            counts[category] = counts.get(category, 0) + 1
+        self.assertEqual(counts, {"invoice": 2, "spam": 2, "support": 2})
+
 
 if __name__ == "__main__":
     unittest.main()
