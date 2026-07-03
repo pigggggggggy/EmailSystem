@@ -40,6 +40,12 @@ category must be one of invoice, support, meeting, sales, spam, personal, other.
 confidence must be a number from 0 to 1. Do not include explanations."""
 
 
+class LabelRequestError(RuntimeError):
+    def __init__(self, message: str, raw_preview: str = "") -> None:
+        super().__init__(message)
+        self.raw_preview = raw_preview[:1000]
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Create multiclass LoRA data using two-model consensus labels.")
     parser.add_argument("--input-dir", action="append", default=None)
@@ -216,6 +222,11 @@ def annotate_batch(
             index, model = futures[future]
             try:
                 results[index][model] = future.result()
+            except LabelRequestError as exc:
+                results[index][model] = {
+                    "error": f"{type(exc).__name__}: {exc}",
+                    "raw_preview": exc.raw_preview,
+                }
             except Exception as exc:
                 results[index][model] = {"error": f"{type(exc).__name__}: {exc}"}
 
@@ -247,16 +258,7 @@ def request_label(
     timeout: float,
     retries: int,
 ) -> dict:
-    payload = {
-        "model": model,
-        "messages": [
-            {"role": "system", "content": LABEL_SYSTEM_PROMPT},
-            {"role": "user", "content": prompt},
-        ],
-        "stream": False,
-        "temperature": 0.0,
-        "max_tokens": 96,
-    }
+    payload = build_request_payload(model, prompt)
     body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
     request = urllib.request.Request(
         api_url,
@@ -265,18 +267,38 @@ def request_label(
         method="POST",
     )
     last_error = None
+    last_raw = ""
     for attempt in range(retries):
         try:
             with urllib.request.urlopen(request, timeout=timeout) as response:
                 response_data = json.loads(response.read().decode("utf-8"))
             content = extract_content(response_data)
+            last_raw = content
             label = validate_label(parse_json_object(content))
             return {**label, "raw": content}
         except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, json.JSONDecodeError, ValueError) as exc:
             last_error = exc
             if attempt + 1 < retries:
                 time.sleep(min(2**attempt, 8))
-    raise RuntimeError(f"request failed after {retries} attempts: {last_error}")
+    raise LabelRequestError(
+        f"request failed after {retries} attempts: {last_error}",
+        raw_preview=last_raw,
+    )
+
+
+def build_request_payload(model: str, prompt: str) -> dict:
+    return {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": LABEL_SYSTEM_PROMPT},
+            {"role": "user", "content": prompt},
+        ],
+        "stream": False,
+        "temperature": 0.0,
+        "max_tokens": 256,
+        "response_format": {"type": "json_object"},
+        "chat_template_kwargs": {"enable_thinking": False},
+    }
 
 
 def extract_content(response: dict) -> str:
@@ -285,14 +307,17 @@ def extract_content(response: dict) -> str:
         raise ValueError("response has no choices")
     message = choices[0].get("message", {})
     content = message.get("content")
-    if isinstance(content, str):
+    if isinstance(content, str) and content.strip():
         return content
     if isinstance(content, list):
         text = "".join(str(item.get("text", "")) for item in content if isinstance(item, dict))
-        if text:
+        if text.strip():
             return text
-    raise ValueError("response has no text content")
-
+    for key in ("reasoning_content", "reasoning"):
+        reasoning = message.get(key)
+        if isinstance(reasoning, str) and reasoning.strip():
+            return reasoning
+    raise ValueError("response has no text or reasoning content")
 
 def validate_label(value: dict) -> dict:
     category = value.get("category")

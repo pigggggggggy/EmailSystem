@@ -23,6 +23,7 @@ python training/label_multiclass_consensus.py \
 ```
 
 The default teacher models are `gemma4-26b` and `qwen3.6-27b`. Override them by passing `--model` exactly twice.
+The request asks the server for a JSON object, disables model thinking through `chat_template_kwargs`, and allows up to 256 output tokens. Empty or malformed responses are retried and recorded with a bounded raw-output preview in `*_errors.jsonl`.
 
 ## 3. Generate the full silver-label dataset
 

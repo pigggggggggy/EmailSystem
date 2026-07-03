@@ -4,6 +4,7 @@ import unittest
 from pathlib import Path
 
 from training.label_multiclass_consensus import (
+    build_request_payload,
     build_training_item,
     consensus_decision,
     extract_content,
@@ -42,6 +43,28 @@ class MulticlassConsensusTest(unittest.TestCase):
         self.assertEqual(validate_label(json.loads(content)), {"category": "invoice", "confidence": 0.7})
         with self.assertRaises(ValueError):
             validate_label({"category": "unknown", "confidence": 1.0})
+
+
+    def test_requests_structured_output_without_thinking(self):
+        payload = build_request_payload("model-a", "email")
+        self.assertEqual(payload["max_tokens"], 256)
+        self.assertEqual(payload["response_format"], {"type": "json_object"})
+        self.assertEqual(payload["chat_template_kwargs"], {"enable_thinking": False})
+
+    def test_falls_back_to_reasoning_content_when_content_is_empty(self):
+        content = extract_content(
+            {
+                "choices": [
+                    {
+                        "message": {
+                            "content": "",
+                            "reasoning_content": '{"category":"spam","confidence":0.9}',
+                        }
+                    }
+                ]
+            }
+        )
+        self.assertEqual(json.loads(content)["category"], "spam")
 
     def test_builds_runtime_compatible_multiclass_training_item(self):
         row = {
