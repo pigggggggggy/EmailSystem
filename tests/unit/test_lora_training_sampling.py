@@ -1,7 +1,11 @@
 import argparse
 import unittest
 
-from training.train_lora_classification import _configure_logical_epoch_strategies, _prepare_train_dataset
+from training.train_lora_classification import (
+    _configure_logical_epoch_strategies,
+    _drop_reserved_labels_column,
+    _prepare_train_dataset,
+)
 
 
 class FakeSplit:
@@ -13,6 +17,17 @@ class FakeSplit:
 
     def __getitem__(self, index):
         return self.values[index]
+
+    @property
+    def column_names(self):
+        if not self.values or not isinstance(self.values[0], dict):
+            return []
+        return list(self.values[0])
+
+    def remove_columns(self, names):
+        return FakeSplit(
+            [{key: value for key, value in item.items() if key not in names} for item in self.values]
+        )
 
     def shuffle(self, *, seed):
         offset = seed % len(self.values)
@@ -96,6 +111,23 @@ class LoraTrainingSamplingTest(unittest.TestCase):
         for item in sampled.values:
             counts[item["category_label"]] = counts.get(item["category_label"], 0) + 1
         self.assertEqual(counts, {"invoice": 3, "spam": 3, "support": 3})
+
+    def test_drops_reserved_labels_but_keeps_multiclass_target(self):
+        split = FakeSplit(
+            [
+                {
+                    "messages": [{"role": "assistant", "content": "target"}],
+                    "category_label": "support",
+                    "labels": {"category": "support", "spam_label": "ham"},
+                }
+            ]
+        )
+
+        cleaned = _drop_reserved_labels_column(split)
+
+        self.assertNotIn("labels", cleaned.values[0])
+        self.assertEqual(cleaned.values[0]["category_label"], "support")
+        self.assertIn("messages", cleaned.values[0])
 
 
 if __name__ == "__main__":

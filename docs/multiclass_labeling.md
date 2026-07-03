@@ -79,6 +79,7 @@ python training/train_lora_classification.py \
 ```
 
 Category balancing deterministically oversamples rare accepted classes. Inspect `manifest.json` first; if a class has very few accepted examples, collect or manually label more examples instead of relying only on oversampling.
+The training script removes the source email `labels` metadata column after category-balanced sampling because `labels` is reserved by TRL for token-level targets. `category_label` and chat `messages` remain intact.
 
 ## 5. Evaluate all seven categories
 

@@ -105,6 +105,8 @@ def main() -> None:
     )
     dataset["train"] = _prepare_train_dataset(dataset["train"], args, concatenate_datasets)
     dataset["validation"] = _limit_dataset(dataset["validation"], args.max_validation_samples, seed=args.seed + 1)
+    dataset["train"] = _drop_reserved_labels_column(dataset["train"])
+    dataset["validation"] = _drop_reserved_labels_column(dataset["validation"])
     _configure_logical_epoch_strategies(args)
     print(
         f"Using train={len(dataset['train'])} validation={len(dataset['validation'])} "
@@ -144,6 +146,12 @@ def main() -> None:
     trainer.save_model(args.output_dir)
     tokenizer.save_pretrained(args.output_dir)
     _write_run_config(args)
+
+
+def _drop_reserved_labels_column(split):
+    if "labels" not in split.column_names:
+        return split
+    return split.remove_columns(["labels"])
 
 
 def _prepare_train_dataset(split, args: argparse.Namespace, concatenate_datasets_fn):
