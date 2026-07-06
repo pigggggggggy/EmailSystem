@@ -112,6 +112,16 @@ class SpamDatasetTest(unittest.TestCase):
 
         self.assertEqual(_message_body(message), "hello")
 
+    def test_write_dataset_replaces_surrogate_characters(self):
+        rows = [record("bad-encoding", "ham", "bad \udcf6 body")]
+        splits, manifest = split_records(rows, train_ratio=1.0, validation_ratio=0.0)
+        with tempfile.TemporaryDirectory() as directory:
+            write_dataset(directory, splits, manifest)
+            payload = (Path(directory) / "train.jsonl").read_text(encoding="utf-8")
+
+        self.assertIn("bad ? body", payload)
+
+
     def test_write_dataset_creates_manifest_and_splits(self):
         rows = [record(f"row-{i}", "spam" if i % 2 else "ham", f"body {i}") for i in range(10)]
         splits, manifest = split_records(rows)

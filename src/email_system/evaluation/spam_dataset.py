@@ -35,7 +35,8 @@ def iter_maildir_rows(
             continue
         relative = path.relative_to(root)
         parts = relative.parts
-        source_id = _first_header(message, "Message-ID").strip() or relative.as_posix()
+        relative_path = _clean(relative.as_posix())
+        source_id = _first_header(message, "Message-ID").strip() or relative_path
         stable_id = hashlib.sha256(f"enron_maildir:{source_id}".encode("utf-8")).hexdigest()[:24]
         yield {
             "email_id": f"enron_maildir:{stable_id}",
@@ -49,9 +50,9 @@ def iter_maildir_rows(
             "attachments": [],
             "labels": {"spam": False, "spam_label": "ham"},
             "metadata": {
-                "maildir_owner": parts[0] if parts else "",
-                "maildir_folder": "/".join(parts[1:-1]),
-                "maildir_path": relative.as_posix(),
+                "maildir_owner": _clean(parts[0]) if parts else "",
+                "maildir_folder": _clean("/".join(parts[1:-1])),
+                "maildir_path": relative_path,
             },
             "source": "enron_maildir",
             "source_id": source_id,
@@ -60,7 +61,7 @@ def iter_maildir_rows(
 
 def _header_values(message, name: str) -> list[str]:
     expected = name.lower()
-    return [str(value) for key, value in message.raw_items() if key.lower() == expected]
+    return [_clean(value) for key, value in message.raw_items() if key.lower() == expected]
 
 
 def _first_header(message, name: str) -> str:
@@ -69,7 +70,7 @@ def _first_header(message, name: str) -> str:
 
 
 def _addresses(values: list[str]) -> list[str]:
-    return [address for _, address in getaddresses(values) if address]
+    return [_clean(address) for _, address in getaddresses(values) if address]
 
 
 def _first_address(values: list[str]) -> str:
@@ -196,7 +197,7 @@ def write_dataset(output_dir: str | Path, splits: dict[str, list[dict]], manifes
     output = Path(output_dir)
     output.mkdir(parents=True, exist_ok=True)
     for name, rows in splits.items():
-        with (output / f"{name}.jsonl").open("w", encoding="utf-8") as handle:
+        with (output / f"{name}.jsonl").open("w", encoding="utf-8", errors="replace") as handle:
             for row in rows:
                 handle.write(json.dumps(row, ensure_ascii=False) + "\n")
     (output / "manifest.json").write_text(
@@ -212,7 +213,7 @@ def content_fingerprint(record: dict) -> str:
             _normalize_for_hash(record.get("body_text", "")),
         ]
     )
-    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+    return hashlib.sha256(normalized.encode("utf-8", errors="replace")).hexdigest()
 
 
 def _record(*, source: str, source_id: str, subject: str, body: str, label: str, timestamp: str | None) -> dict:
@@ -286,7 +287,7 @@ def _label(value: str) -> str:
 
 
 def _clean(value: object) -> str:
-    return str(value or "").replace("\0", "").strip()
+    return str(value or "").replace("\0", "").encode("utf-8", errors="replace").decode("utf-8").strip()
 
 
 def _normalize_for_hash(value: str) -> str:
