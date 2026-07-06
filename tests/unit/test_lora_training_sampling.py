@@ -6,6 +6,7 @@ from training.train_lora_classification import (
     _drop_reserved_labels_column,
     _limit_dataset,
     _prepare_train_dataset,
+    _soft_balanced_allocations,
 )
 
 
@@ -117,6 +118,25 @@ class LoraTrainingSamplingTest(unittest.TestCase):
         self.assertGreater(counts["spam"], counts["support"])
         self.assertGreater(counts["support"], counts["invoice"])
         self.assertLessEqual(counts["spam"] / counts["invoice"], 3.0)
+
+    def test_soft_balance_enforces_ratio_after_rounding(self):
+        allocations = _soft_balanced_allocations(
+            {
+                "invoice": 83,
+                "meeting": 776,
+                "other": 5970,
+                "personal": 1947,
+                "sales": 579,
+                "spam": 14125,
+                "support": 1840,
+            },
+            10000,
+            max_ratio=3.0,
+            allow_oversampling=True,
+        )
+
+        self.assertEqual(sum(allocations.values()), 10000)
+        self.assertLessEqual(max(allocations.values()) / min(allocations.values()), 3.0)
 
     def test_validation_balancing_does_not_duplicate_rows(self):
         values = [

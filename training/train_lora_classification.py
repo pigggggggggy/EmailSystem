@@ -345,6 +345,15 @@ def _soft_balanced_allocations(
             break
         label = min(eligible, key=lambda item: ((allocations[item] + 1) / weights[item], item))
         allocations[label] += 1
+
+    if allow_oversampling:
+        while True:
+            smallest_label = min(labels, key=lambda item: (allocations[item], item))
+            largest_label = max(labels, key=lambda item: (allocations[item], item))
+            if allocations[largest_label] <= allocations[smallest_label] * max_ratio:
+                break
+            allocations[largest_label] -= 1
+            allocations[smallest_label] += 1
     return allocations
 
 
