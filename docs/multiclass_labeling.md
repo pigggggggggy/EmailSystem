@@ -1,10 +1,19 @@
 # Multiclass Consensus Labeling
 
-This pipeline converts the existing binary spam/phishing email corpora into seven-category silver-label data. Two OpenAI-compatible models label every selected email independently; a row is accepted only when both return the same valid category.
+This pipeline converts spam, phishing, and Enron Maildir corpora into ten-category silver-label data. Two OpenAI-compatible models label every selected email independently; a row is accepted only when both return the same valid category.
 
-Categories: `invoice`, `support`, `meeting`, `sales`, `spam`, `personal`, and `other`.
+Categories: `personal_email`, `business_email`, `internal_email`, `marketing_email`, `automated_email`, `legal_formal_email`, `educational_email`, `social_email`, `special_purpose_email`, and `spam`. There is no `other` category.
 
-## 1. Configure credentials
+## 1. Build the Maildir candidate dataset
+
+```bash
+python scripts/build_maildir_dataset.py --maildir datasets/maildir
+```
+
+The default source quota is spam:phishing:maildir = 1:1:3, so Maildir contributes about 60% of selected candidates. Override this by repeating `--input-dir` and `--input-weight` together.
+
+
+## 2. Configure credentials
 
 Never put the API key in a command, source file, or Git-tracked environment file. Export a newly issued key in the shell:
 
@@ -13,7 +22,7 @@ export EMAILSYSTEM_LABEL_API_URL="http://192.168.1.79:21030/v1/chat/completions"
 export EMAILSYSTEM_LABEL_API_KEY="<new-api-key>"
 ```
 
-## 2. Run a small validation sample
+## 3. Run a small validation sample
 
 ```bash
 python training/label_multiclass_consensus.py \
@@ -25,7 +34,7 @@ python training/label_multiclass_consensus.py \
 The default teacher models are `gemma4-26b` and `qwen3.6-27b`. Override them by passing `--model` exactly twice.
 The request asks the server for a JSON object, disables model thinking through `chat_template_kwargs`, and allows up to 256 output tokens. Empty or malformed responses are retried and recorded with a bounded raw-output preview in `*_errors.jsonl`.
 
-## 3. Generate the full silver-label dataset
+## 4. Generate the full silver-label dataset
 
 Run in the foreground:
 

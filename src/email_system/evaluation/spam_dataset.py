@@ -7,9 +7,60 @@ import re
 import sys
 from collections import Counter, defaultdict
 from email import policy
+from email.utils import getaddresses
 from email.parser import BytesParser
 from pathlib import Path
 from typing import Iterable, Iterator
+
+
+def iter_maildir_rows(root: str | Path) -> Iterator[dict]:
+    root = Path(root)
+    for path in sorted(candidate for candidate in root.rglob("*") if candidate.is_file()):
+        try:
+            message = BytesParser(policy=policy.default).parsebytes(path.read_bytes())
+        except (OSError, ValueError):
+            continue
+        subject = _clean(str(message.get("Subject", "")))
+        body = _message_body(message)
+        if not subject and not body:
+            continue
+        relative = path.relative_to(root)
+        parts = relative.parts
+        source_id = str(message.get("Message-ID", "")).strip() or relative.as_posix()
+        stable_id = hashlib.sha256(f"enron_maildir:{source_id}".encode("utf-8")).hexdigest()[:24]
+        yield {
+            "email_id": f"enron_maildir:{stable_id}",
+            "thread_id": _maildir_thread_id(message),
+            "subject": subject,
+            "from": _first_address(message.get_all("From", [])),
+            "to": _addresses(message.get_all("To", [])),
+            "cc": _addresses(message.get_all("Cc", [])),
+            "timestamp": _clean(str(message.get("Date", ""))) or None,
+            "body_text": body,
+            "attachments": [],
+            "labels": {"spam": False, "spam_label": "ham"},
+            "metadata": {
+                "maildir_owner": parts[0] if parts else "",
+                "maildir_folder": "/".join(parts[1:-1]),
+                "maildir_path": relative.as_posix(),
+            },
+            "source": "enron_maildir",
+            "source_id": source_id,
+        }
+
+
+def _addresses(values: list[str]) -> list[str]:
+    return [address for _, address in getaddresses(values) if address]
+
+
+def _first_address(values: list[str]) -> str:
+    addresses = _addresses(values)
+    return addresses[0] if addresses else ""
+
+
+def _maildir_thread_id(message) -> str | None:
+    references = str(message.get("References", "")).split()
+    return str(message.get("In-Reply-To", "")).strip() or (references[0] if references else None)
 
 
 def iter_enron_rows(path: str | Path) -> Iterator[dict]:

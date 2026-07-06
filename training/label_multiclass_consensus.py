@@ -23,7 +23,8 @@ from email_system.skills.classify import VALID_CATEGORIES
 from email_system.skills.json_utils import parse_json_object
 from training.prepare_lora_classification_data import _email_prompt
 
-DEFAULT_INPUT_DIRS = ("data/processed/spam_benchmark", "data/processed/phishing_benchmark")
+DEFAULT_INPUT_DIRS = ("data/processed/spam_benchmark", "data/processed/phishing_benchmark", "data/processed/maildir_benchmark")
+DEFAULT_INPUT_WEIGHTS = (1.0, 1.0, 3.0)
 DEFAULT_MODELS = ("gemma4-26b", "qwen3.6-27b")
 TAXONOMY_VERSION = "email-multiclass-consensus-v3"
 LABEL_SYSTEM_PROMPT = """You are a strict email classification annotator.
@@ -56,6 +57,7 @@ class LabelRequestError(RuntimeError):
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Create multiclass LoRA data using two-model consensus labels.")
     parser.add_argument("--input-dir", action="append", default=None)
+    parser.add_argument("--input-weight", action="append", type=float, default=None, help="Relative source quota; repeat once per --input-dir.")
     parser.add_argument("--output-dir", default="data/finetune/multiclass_consensus")
     parser.add_argument("--api-url", default=os.environ.get("EMAILSYSTEM_LABEL_API_URL"))
     parser.add_argument("--api-key-env", default="EMAILSYSTEM_LABEL_API_KEY")
@@ -80,12 +82,15 @@ def main() -> None:
         raise SystemExit(f"Missing API key environment variable: {args.api_key_env}")
 
     input_dirs = [Path(value) for value in (args.input_dir or DEFAULT_INPUT_DIRS)]
+    input_weights = tuple(args.input_weight or (DEFAULT_INPUT_WEIGHTS if args.input_dir is None else [1.0] * len(input_dirs)))
+    validate_input_weights(input_dirs, input_weights)
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     config = {
         "taxonomy_version": TAXONOMY_VERSION,
         "prompt_version": PROMPT_VERSION,
         "source_dirs": [str(path) for path in input_dirs],
+        "source_weights": list(input_weights),
         "models": list(models),
         "train_limit": args.train_limit,
         "validation_limit": args.validation_limit,
@@ -96,7 +101,7 @@ def main() -> None:
 
     split_metrics = {}
     for split, limit in (("train", args.train_limit), ("validation", args.validation_limit)):
-        rows = stable_sample(collect_rows(input_dirs, split), limit=limit, seed=args.seed + (split == "validation"))
+        rows = weighted_sample_input_dirs(input_dirs, input_weights, split=split, limit=limit, seed=args.seed + (split == "validation"))
         split_metrics[split] = label_split(
             rows,
             split=split,
@@ -189,6 +194,7 @@ def label_split(
     write_jsonl_atomic(output_dir / f"{split}_errors.jsonl", errors)
     return {
         "selected": len(rows),
+        "selected_sources": dict(sorted(Counter(str(row.get("source", "unknown")) for row in rows).items())),
         "accepted": len(accepted_rows),
         "agreement_rate": len(accepted_rows) / len(rows) if rows else 0.0,
         "disagreements": len(disagreements),
@@ -388,6 +394,41 @@ def build_training_item(row: dict, annotation: dict, *, max_body_chars: int) -> 
 
 def labeling_prompt(row: dict, *, max_body_chars: int) -> str:
     return "Classify this email.\n\n" + _email_prompt(row, max_body_chars=max_body_chars)
+
+
+def weighted_sample_input_dirs(
+    input_dirs: list[Path],
+    weights: tuple[float, ...],
+    *,
+    split: str,
+    limit: int,
+    seed: int,
+) -> list[dict]:
+    source_rows = [collect_rows([input_dir], split) for input_dir in input_dirs]
+    allocations = _weighted_allocations([len(rows) for rows in source_rows], weights, limit)
+    selected = []
+    for index, (rows, allocation) in enumerate(zip(source_rows, allocations)):
+        selected.extend(stable_sample(rows, limit=allocation, seed=seed + index))
+    return sorted(selected, key=lambda row: stable_key(seed, row_id(row)))
+
+
+def _weighted_allocations(sizes: list[int], weights: tuple[float, ...], limit: int) -> list[int]:
+    target = sum(sizes) if limit <= 0 else min(limit, sum(sizes))
+    allocations = [0] * len(sizes)
+    for _ in range(target):
+        eligible = [index for index, size in enumerate(sizes) if allocations[index] < size]
+        if not eligible:
+            break
+        selected = min(eligible, key=lambda index: ((allocations[index] + 1) / weights[index], index))
+        allocations[selected] += 1
+    return allocations
+
+
+def validate_input_weights(input_dirs: list[Path], weights: tuple[float, ...]) -> None:
+    if len(input_dirs) != len(weights):
+        raise SystemExit("Provide exactly one --input-weight per --input-dir")
+    if any(weight <= 0 for weight in weights):
+        raise SystemExit("--input-weight values must be positive")
 
 
 def collect_rows(input_dirs: list[Path], split: str) -> list[dict]:

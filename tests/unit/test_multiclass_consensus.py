@@ -11,6 +11,8 @@ from training.label_multiclass_consensus import (
     prepare_config,
     stable_sample,
     validate_label,
+    _weighted_allocations,
+    validate_input_weights,
 )
 
 
@@ -83,6 +85,14 @@ class MulticlassConsensusTest(unittest.TestCase):
         self.assertEqual(item["category_label"], "business_email")
         self.assertEqual(json.loads(item["messages"][-1]["content"])["category"], "business_email")
         self.assertEqual(item["body_text"], "The service is broken")
+
+    def test_source_weights_raise_maildir_quota(self):
+        allocations = _weighted_allocations([1000, 1000, 1000], (1.0, 1.0, 3.0), 100)
+        self.assertEqual(allocations, [20, 20, 60])
+        validate_input_weights([Path("a"), Path("b"), Path("c")], (1.0, 1.0, 3.0))
+        with self.assertRaises(SystemExit):
+            validate_input_weights([Path("a")], (1.0, 2.0))
+
 
     def test_sampling_and_resume_configuration_are_deterministic(self):
         rows = [{"email_id": f"mail-{index}"} for index in range(10)]

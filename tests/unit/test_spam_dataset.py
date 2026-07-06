@@ -3,7 +3,7 @@ import unittest
 from pathlib import Path
 from email.message import EmailMessage
 
-from email_system.evaluation.spam_dataset import _message_body, content_fingerprint, iter_enron_rows, split_records, write_dataset
+from email_system.evaluation.spam_dataset import _message_body, content_fingerprint, iter_enron_rows, iter_maildir_rows, split_records, write_dataset
 
 
 def record(email_id: str, label: str, body: str) -> dict:
@@ -57,6 +57,28 @@ class SpamDatasetTest(unittest.TestCase):
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0]["labels"]["spam_label"], "ham")
         self.assertEqual(rows[0]["body_text"], "normal body")
+
+    def test_maildir_reader_maps_message_and_folder_metadata(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "user-a" / "inbox" / "1."
+            path.parent.mkdir(parents=True)
+            message = EmailMessage()
+            message["Message-ID"] = "<mail-1@example.com>"
+            message["From"] = "Alice <alice@example.com>"
+            message["To"] = "Bob <bob@example.com>"
+            message["Subject"] = "Project update"
+            message.set_content("The project is on schedule.")
+            path.write_bytes(message.as_bytes())
+
+            rows = list(iter_maildir_rows(directory))
+
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["from"], "alice@example.com")
+        self.assertEqual(rows[0]["to"], ["bob@example.com"])
+        self.assertEqual(rows[0]["labels"]["spam_label"], "ham")
+        self.assertNotIn("category", rows[0]["labels"])
+        self.assertEqual(rows[0]["metadata"]["maildir_folder"], "inbox")
+
 
     def test_malformed_multipart_body_does_not_abort_dataset(self):
         message = EmailMessage()
