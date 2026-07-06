@@ -26,25 +26,25 @@ def iter_maildir_rows(
         paths = tqdm(paths, desc="maildir", unit="file", dynamic_ncols=True)
     for path in paths:
         try:
-            message = BytesParser(policy=policy.default).parsebytes(path.read_bytes())
+            message = BytesParser(policy=policy.compat32).parsebytes(path.read_bytes())
         except (OSError, ValueError):
             continue
-        subject = _clean(str(message.get("Subject", "")))
+        subject = _clean(_first_header(message, "Subject"))
         body = _message_body(message)
         if not subject and not body:
             continue
         relative = path.relative_to(root)
         parts = relative.parts
-        source_id = str(message.get("Message-ID", "")).strip() or relative.as_posix()
+        source_id = _first_header(message, "Message-ID").strip() or relative.as_posix()
         stable_id = hashlib.sha256(f"enron_maildir:{source_id}".encode("utf-8")).hexdigest()[:24]
         yield {
             "email_id": f"enron_maildir:{stable_id}",
             "thread_id": _maildir_thread_id(message),
             "subject": subject,
-            "from": _first_address(message.get_all("From", [])),
-            "to": _addresses(message.get_all("To", [])),
-            "cc": _addresses(message.get_all("Cc", [])),
-            "timestamp": _clean(str(message.get("Date", ""))) or None,
+            "from": _first_address(_header_values(message, "From")),
+            "to": _addresses(_header_values(message, "To")),
+            "cc": _addresses(_header_values(message, "Cc")),
+            "timestamp": _clean(_first_header(message, "Date")) or None,
             "body_text": body,
             "attachments": [],
             "labels": {"spam": False, "spam_label": "ham"},
@@ -58,6 +58,16 @@ def iter_maildir_rows(
         }
 
 
+def _header_values(message, name: str) -> list[str]:
+    expected = name.lower()
+    return [str(value) for key, value in message.raw_items() if key.lower() == expected]
+
+
+def _first_header(message, name: str) -> str:
+    values = _header_values(message, name)
+    return values[0] if values else ""
+
+
 def _addresses(values: list[str]) -> list[str]:
     return [address for _, address in getaddresses(values) if address]
 
@@ -68,8 +78,8 @@ def _first_address(values: list[str]) -> str:
 
 
 def _maildir_thread_id(message) -> str | None:
-    references = str(message.get("References", "")).split()
-    return str(message.get("In-Reply-To", "")).strip() or (references[0] if references else None)
+    references = _first_header(message, "References").split()
+    return _first_header(message, "In-Reply-To").strip() or (references[0] if references else None)
 
 
 def iter_enron_rows(path: str | Path) -> Iterator[dict]:
@@ -102,7 +112,7 @@ def iter_trec_rows(root: str | Path, index_path: str | Path | None = None) -> It
         label = _label(raw_label)
         message_path = (index.parent / relative_path).resolve()
         message = BytesParser(policy=policy.default).parsebytes(message_path.read_bytes())
-        subject = _clean(str(message.get("Subject", "")))
+        subject = _clean(_first_header(message, "Subject"))
         body = _message_body(message)
         yield _record(
             source="trec06c",

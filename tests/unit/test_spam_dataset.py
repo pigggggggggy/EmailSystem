@@ -80,6 +80,24 @@ class SpamDatasetTest(unittest.TestCase):
         self.assertEqual(rows[0]["metadata"]["maildir_folder"], "inbox")
 
 
+    def test_maildir_reader_tolerates_malformed_address_header(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "user-a" / "inbox" / "broken."
+            path.parent.mkdir(parents=True)
+            path.write_bytes(
+                b"Message-ID: <broken@example.com>\n"
+                b"From: sender@example.com\n"
+                b"To: Broken Group @enron.com, .name@enron.com\n"
+                b"Subject: malformed recipients\n\nbody\n"
+            )
+
+            rows = list(iter_maildir_rows(directory))
+
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["subject"], "malformed recipients")
+        self.assertEqual(rows[0]["body_text"], "body")
+
+
     def test_malformed_multipart_body_does_not_abort_dataset(self):
         message = EmailMessage()
         message.set_type("multipart/mixed")
