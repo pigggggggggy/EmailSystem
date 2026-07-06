@@ -73,7 +73,7 @@ def main() -> None:
         },
         "target_mapping": {
             "spam": {"category": "spam", "priority": "normal", "confidence": args.spam_confidence},
-            "ham": {"category": "other", "priority": "normal", "confidence": args.ham_confidence},
+            "ham": {"category": "automated_email", "priority": "normal", "confidence": args.ham_confidence},
         },
     }
     (output_dir / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -145,7 +145,7 @@ def _target_json(label: str, spam_confidence: float, ham_confidence: float) -> s
     if label == "spam":
         target = {"category": "spam", "priority": "normal", "confidence": spam_confidence}
     else:
-        target = {"category": "other", "priority": "normal", "confidence": ham_confidence}
+        target = {"category": "automated_email", "priority": "normal", "confidence": ham_confidence}
     return json.dumps(target, ensure_ascii=False, separators=(",", ":"))
 
 

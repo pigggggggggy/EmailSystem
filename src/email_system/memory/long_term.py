@@ -27,7 +27,7 @@ class MemoryRecord:
             thread_id=email.thread_id or email.email_id,
             subject=email.subject,
             sender=email.sender,
-            category=output.get("category", "other"),
+            category=output.get("category", "automated_email"),
             priority=output.get("priority", "normal"),
             summary=output.get("summary", ""),
             action_count=len(output.get("action_items", [])),

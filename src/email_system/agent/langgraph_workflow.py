@@ -118,8 +118,11 @@ class EmailAgentWorkflow:
         state["context"]["classify_intent"] = output
 
     def _route_after_classify(self, state: EmailGraphState) -> str:
-        category = state.get("outputs", {}).get("classify_intent", {}).get("category", "other")
-        if category in {"support", "bug", "bug_tracking"}:
+        category = state.get("outputs", {}).get("classify_intent", {}).get("category", "automated_email")
+        email = state["email"]
+        content = f"{email.subject}\n{email.body_text}".lower()
+        support_terms = ("issue", "error", "cannot", "failed", "support", "complaint", "故障", "错误", "无法", "投诉")
+        if category == "business_email" and any(term in content for term in support_terms):
             return "bug_tracking"
         return "search_documentation"
 
@@ -208,7 +211,7 @@ class EmailAgentWorkflow:
         actions = state["outputs"].get("extract_action_items", {})
         review = state["outputs"].get("human_review", {})
         return {
-            "category": classify.get("category", "other"),
+            "category": classify.get("category", "automated_email"),
             "priority": classify.get("priority", "normal"),
             "summary": summary.get("summary", ""),
             "action_items": actions.get("action_items", []),
@@ -224,7 +227,7 @@ class EmailAgentWorkflow:
         priority = classify.get("priority", "normal")
         return AgentOutput(
             email_id=state["email"].email_id,
-            category=classify.get("category", "other"),
+            category=classify.get("category", "automated_email"),
             priority=priority,
             summary=summary.get("summary", ""),
             action_items=[ActionItem(**item) for item in actions.get("action_items", [])],

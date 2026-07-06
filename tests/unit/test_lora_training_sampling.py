@@ -98,9 +98,9 @@ class LoraTrainingSamplingTest(unittest.TestCase):
         values = [
             {"category_label": "spam", "id": index} for index in range(100)
         ] + [
-            {"category_label": "support", "id": 100 + index} for index in range(25)
+            {"category_label": "special_purpose_email", "id": 100 + index} for index in range(25)
         ] + [
-            {"category_label": "invoice", "id": 125},
+            {"category_label": "legal_formal_email", "id": 125},
         ]
         parsed = args(
             epochs=1.0,
@@ -115,20 +115,20 @@ class LoraTrainingSamplingTest(unittest.TestCase):
         for item in sampled.values:
             counts[item["category_label"]] = counts.get(item["category_label"], 0) + 1
         self.assertEqual(sum(counts.values()), 60)
-        self.assertGreater(counts["spam"], counts["support"])
-        self.assertGreater(counts["support"], counts["invoice"])
-        self.assertLessEqual(counts["spam"] / counts["invoice"], 3.0)
+        self.assertGreater(counts["spam"], counts["special_purpose_email"])
+        self.assertGreater(counts["special_purpose_email"], counts["legal_formal_email"])
+        self.assertLessEqual(counts["spam"] / counts["legal_formal_email"], 3.0)
 
     def test_soft_balance_enforces_ratio_after_rounding(self):
         allocations = _soft_balanced_allocations(
             {
-                "invoice": 83,
-                "meeting": 776,
-                "other": 5970,
-                "personal": 1947,
-                "sales": 579,
+                "legal_formal_email": 83,
+                "internal_email": 776,
+                "business_email": 5970,
+                "personal_email": 1947,
+                "marketing_email": 579,
                 "spam": 14125,
-                "support": 1840,
+                "special_purpose_email": 1840,
             },
             10000,
             max_ratio=3.0,
@@ -142,7 +142,7 @@ class LoraTrainingSamplingTest(unittest.TestCase):
         values = [
             {"category_label": "spam", "id": index} for index in range(20)
         ] + [
-            {"category_label": "invoice", "id": 20 + index} for index in range(2)
+            {"category_label": "legal_formal_email", "id": 20 + index} for index in range(2)
         ]
 
         sampled = _limit_dataset(
@@ -159,15 +159,15 @@ class LoraTrainingSamplingTest(unittest.TestCase):
         for item in sampled.values:
             counts[item["category_label"]] = counts.get(item["category_label"], 0) + 1
         self.assertEqual(len(ids), len(set(ids)))
-        self.assertEqual(counts, {"invoice": 2, "spam": 6})
+        self.assertEqual(counts, {"legal_formal_email": 2, "spam": 6})
 
     def test_drops_reserved_labels_but_keeps_multiclass_target(self):
         split = FakeSplit(
             [
                 {
                     "messages": [{"role": "assistant", "content": "target"}],
-                    "category_label": "support",
-                    "labels": {"category": "support", "spam_label": "ham"},
+                    "category_label": "special_purpose_email",
+                    "labels": {"category": "special_purpose_email", "spam_label": "ham"},
                 }
             ]
         )
@@ -175,7 +175,7 @@ class LoraTrainingSamplingTest(unittest.TestCase):
         cleaned = _drop_reserved_labels_column(split)
 
         self.assertNotIn("labels", cleaned.values[0])
-        self.assertEqual(cleaned.values[0]["category_label"], "support")
+        self.assertEqual(cleaned.values[0]["category_label"], "special_purpose_email")
         self.assertIn("messages", cleaned.values[0])
 
 

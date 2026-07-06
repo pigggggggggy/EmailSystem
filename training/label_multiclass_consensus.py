@@ -25,18 +25,25 @@ from training.prepare_lora_classification_data import _email_prompt
 
 DEFAULT_INPUT_DIRS = ("data/processed/spam_benchmark", "data/processed/phishing_benchmark")
 DEFAULT_MODELS = ("gemma4-26b", "qwen3.6-27b")
-TAXONOMY_VERSION = "email-multiclass-consensus-v1"
+TAXONOMY_VERSION = "email-multiclass-consensus-v3"
 LABEL_SYSTEM_PROMPT = """You are a strict email classification annotator.
 Choose exactly one category using these precedence-aware definitions:
-- spam: phishing, scams, credential theft, unsolicited bulk ads, suspicious promotions, unwanted dating outreach, or malicious mail. Spam takes precedence over sales and personal.
-- invoice: legitimate invoices, receipts, billing, payments, refunds, or account charges.
-- support: requests for help, technical problems, bug reports, incidents, complaints, or customer-service cases.
-- meeting: scheduling, rescheduling, invitations, appointments, calendars, or agendas.
-- sales: legitimate commercial leads, quotations, product inquiries, partnerships, or contract opportunities that are not unsolicited spam.
-- personal: legitimate interpersonal mail from friends, family, or known contacts that is not primarily business.
-- other: legitimate mail that does not fit the categories above, including general notifications or newsletters that are not spam.
+- personal_email: private conversations among friends, family, or acquaintances, including daily life, travel, personal feelings, and personal thanks.
+- business_email: business transactions, negotiations, project cooperation, sales conversations, customer service, complaints, after-sales support, recruiting, and interviews.
+- internal_email: internal company announcements, policy changes, team collaboration, project updates, task assignments, meeting coordination, and employee feedback.
+- marketing_email: newsletters, company or industry news digests, promotions, discounts, product campaigns, and customer-facing event invitations.
+- automated_email: automated welcome messages, order or appointment confirmations, account events, receipts, shipping updates, and scheduled reminders.
+- legal_formal_email: legal notices, formal warnings, policy violations, overdue-payment warnings, and contract delivery, signing, or confirmation.
+- educational_email: course schedules, exams, transcripts, assessment reports, lectures, competitions, and educational activity notices.
+- social_email: greetings, holiday or birthday wishes, social invitations, and congratulations.
+- special_purpose_email: surveys, feedback collection, maintenance notices, service interruptions, operational alerts, and other purpose-specific notifications.
+- spam: phishing, scams, credential theft, malware, deceptive mail, unsolicited bulk messages, or unwanted outreach. Spam takes precedence over every other category.
+Distinguish personal_email from social_email: ordinary private conversation is personal_email; greetings, invitations, and congratulations are social_email.
+Distinguish business_email from marketing_email: direct business, sales, service, or recruiting correspondence is business_email; bulk promotion, newsletters, and campaign invitations are marketing_email.
+Distinguish automated_email from special_purpose_email: transactional lifecycle messages are automated_email; surveys, maintenance, outages, and operational notices are special_purpose_email.
+There is no other category. For ambiguous legitimate mail, select the closest category and lower confidence.
 Return only one JSON object: {"category":"...","confidence":0.0}.
-category must be one of invoice, support, meeting, sales, spam, personal, other.
+category must be one of personal_email, business_email, internal_email, marketing_email, automated_email, legal_formal_email, educational_email, social_email, special_purpose_email, spam.
 confidence must be a number from 0 to 1. Do not include explanations."""
 
 

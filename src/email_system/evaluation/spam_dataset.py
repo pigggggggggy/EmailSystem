@@ -158,7 +158,7 @@ def _record(*, source: str, source_id: str, subject: str, body: str, label: str,
         "body_text": body,
         "attachments": [],
         "labels": {
-            "category": "spam" if label == "spam" else "other",
+            **({"category": "spam"} if label == "spam" else {}),
             "spam": label == "spam",
             "spam_label": label,
         },

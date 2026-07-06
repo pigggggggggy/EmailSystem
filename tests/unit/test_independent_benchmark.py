@@ -25,7 +25,7 @@ class LowConfidenceLLM:
 class FixtureLLM:
     def generate(self, prompt, *, task, max_tokens=512):
         if task == "classify_email":
-            category = "spam" if "BUY NOW" in prompt else "personal"
+            category = "spam" if "BUY NOW" in prompt else "personal_email"
             text = json.dumps({"category": category, "priority": "normal", "confidence": 0.9})
         elif task == "summarize_email":
             text = json.dumps({"summary": "summary", "confidence": 0.8})
@@ -116,7 +116,7 @@ class IndependentBenchmarkTest(unittest.TestCase):
 
     def test_multiclass_quality_uses_category_labels(self):
         rows = [
-            {**row(1, "ham", "hello"), "labels": {"category": "personal"}},
+            {**row(1, "ham", "hello"), "labels": {"category": "personal_email"}},
             {**row(2, "spam", "BUY NOW"), "labels": {"category": "spam"}},
         ]
 
@@ -124,12 +124,12 @@ class IndependentBenchmarkTest(unittest.TestCase):
 
         self.assertEqual(metrics["quality_mode"], "multiclass")
         self.assertEqual(metrics["accuracy"], 1.0)
-        self.assertEqual(predictions[0]["gold_category"], "personal")
-        self.assertIn("personal", metrics["confusion_matrix"])
+        self.assertEqual(predictions[0]["gold_category"], "personal_email")
+        self.assertIn("personal_email", metrics["confusion_matrix"])
 
     def test_multiclass_selection_balances_available_categories(self):
         rows = []
-        for category in ("invoice", "support", "spam"):
+        for category in ("automated_email", "business_email", "spam"):
             for index in range(5):
                 item = row(len(rows), "spam" if category == "spam" else "ham", category)
                 item["labels"]["category"] = category
@@ -141,7 +141,7 @@ class IndependentBenchmarkTest(unittest.TestCase):
         for item in selected:
             category = item["labels"]["category"]
             counts[category] = counts.get(category, 0) + 1
-        self.assertEqual(counts, {"invoice": 2, "spam": 2, "support": 2})
+        self.assertEqual(counts, {"automated_email": 2, "spam": 2, "business_email": 2})
 
 
 if __name__ == "__main__":

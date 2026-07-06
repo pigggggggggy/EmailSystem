@@ -7,7 +7,19 @@ from email_system.schemas import Email
 from email_system.skills.json_utils import ModelOutputParseError, parse_json_object
 
 
-VALID_CATEGORIES = {"invoice", "support", "meeting", "sales", "spam", "personal", "other"}
+VALID_CATEGORIES = {
+    "personal_email",
+    "business_email",
+    "internal_email",
+    "marketing_email",
+    "automated_email",
+    "legal_formal_email",
+    "educational_email",
+    "social_email",
+    "special_purpose_email",
+    "spam",
+}
+DEFAULT_CATEGORY = "automated_email"
 VALID_PRIORITIES = {"low", "normal", "high", "urgent"}
 LOW_CONFIDENCE_THRESHOLD = 0.5
 
@@ -21,7 +33,7 @@ class ClassifyEmailSkill:
             data = _validated_classification(parse_json_object(result.text), result.text)
         except ModelOutputParseError as exc:
             data = {
-                "category": "other",
+                "category": DEFAULT_CATEGORY,
                 "priority": "normal",
                 "confidence": 0.0,
                 "parse_error": str(exc),
@@ -52,7 +64,7 @@ def _validated_classification(data: dict[str, Any], raw_output: str) -> dict[str
 
     if errors:
         return {
-            "category": category if category in VALID_CATEGORIES else "other",
+            "category": category if category in VALID_CATEGORIES else DEFAULT_CATEGORY,
             "priority": priority if priority in VALID_PRIORITIES else "normal",
             "confidence": float(confidence) if valid_confidence else 0.0,
             "parse_error": "; ".join(errors),

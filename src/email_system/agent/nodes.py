@@ -113,7 +113,7 @@ def agent_output_projection(state: WorkflowState) -> dict:
     actions = state.outputs.get("extract_action_items", {})
     review = state.outputs.get("human_review_policy", {})
     return {
-        "category": classify.get("category", "other"),
+        "category": classify.get("category", "automated_email"),
         "priority": classify.get("priority", "normal"),
         "summary": summary.get("summary", ""),
         "action_items": actions.get("action_items", []),

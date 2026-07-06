@@ -15,14 +15,14 @@ class WorkflowTest(unittest.TestCase):
                 "from": "customer@example.com",
                 "to": ["support@example.com"],
                 "body_text": "Please check this ASAP. I cannot login.",
-                "labels": {"category": "support", "priority": "urgent"},
+                "labels": {"category": "business_email", "priority": "urgent"},
             }
         )
 
         output = EmailAgentWorkflow(MockLLMClient()).run(email)
 
         self.assertEqual(output.email_id, "t-1")
-        self.assertEqual(output.category, "support")
+        self.assertEqual(output.category, "business_email")
         self.assertEqual(output.priority, "urgent")
         self.assertTrue(output.requires_human_review)
         self.assertTrue(output.summary)

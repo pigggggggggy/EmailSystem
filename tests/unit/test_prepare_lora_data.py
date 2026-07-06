@@ -50,7 +50,7 @@ class PrepareLoraDataTest(unittest.TestCase):
 
         self.assertEqual(count, 2)
         self.assertEqual(rows[0]["messages"][-1]["content"], '{"category":"spam","priority":"normal","confidence":0.95}')
-        self.assertEqual(rows[1]["messages"][-1]["content"], '{"category":"other","priority":"normal","confidence":0.9}')
+        self.assertEqual(rows[1]["messages"][-1]["content"], '{"category":"automated_email","priority":"normal","confidence":0.9}')
 
 
 def _write_jsonl(path: Path, rows: List[dict]) -> None:

@@ -39,7 +39,7 @@ class WorkflowPattern:
         return cls(
             workflow_id=str(data["workflow_id"]),
             description=str(data.get("description", "")),
-            category=str(data.get("category", "other")),
+            category=str(data.get("category", "automated_email")),
             priority=str(data.get("priority", "normal")),
             steps=[WorkflowStep.from_dict(item) for item in data.get("steps", [])],
             source_email_ids=list(data.get("source_email_ids", [])),

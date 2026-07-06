@@ -42,7 +42,7 @@ def run_classification_quality(
     for index, row in enumerate(rows, start=1):
         email = Email.from_dict(row)
         output = skill.run(email, {}, llm)
-        predicted_category = str(output.get("category", "other"))
+        predicted_category = str(output.get("category", "automated_email"))
         invalid = bool(output.get("parse_error")) or predicted_category not in VALID_CATEGORIES
         confidence = float(output.get("confidence", 0.0))
         low_confidence = bool(output.get("low_confidence", confidence < LOW_CONFIDENCE_THRESHOLD))

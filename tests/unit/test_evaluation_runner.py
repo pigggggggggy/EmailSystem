@@ -6,11 +6,11 @@ from email_system.evaluation import evaluate_predictions
 class EvaluationRunnerTest(unittest.TestCase):
     def test_parse_success_rate_uses_skill_errors(self):
         result = evaluate_predictions(
-            [{"email_id": "e-1", "labels": {"category": "other"}}],
+            [{"email_id": "e-1", "labels": {"category": "business_email"}}],
             [
                 {
                     "email_id": "e-1",
-                    "category": "other",
+                    "category": "business_email",
                     "timings_ms": {"classify_email": 1.0, "summarize_email": 1.0},
                     "skill_errors": {"classify_email": "No JSON object found"},
                 }

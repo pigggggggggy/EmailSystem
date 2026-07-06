@@ -25,7 +25,7 @@ class LowConfidenceLLM:
         from email_system.models import GenerationResult
         import json
         outputs = {
-            "classify_email": json.dumps({"category": "personal", "priority": "normal", "confidence": 0.0}),
+            "classify_email": json.dumps({"category": "personal_email", "priority": "normal", "confidence": 0.0}),
             "summarize_email": json.dumps({"summary": "summary", "confidence": 0.8}),
             "extract_action_items": json.dumps({"action_items": []}),
             "draft_reply": "reply",
@@ -46,7 +46,7 @@ class LangGraphWorkflowTest(unittest.TestCase):
         nodes = [event["node"] for event in output.workflow_trace]
 
         self.assertEqual(nodes, ["read_email", "classify_intent", "bug_tracking", "write_response", "human_review", "send_reply"])
-        self.assertEqual(output.category, "support")
+        self.assertEqual(output.category, "business_email")
         self.assertTrue(output.requires_human_review)
         self.assertEqual(output.memory["short_term"]["email_ids"], [])
         self.assertIn("classify_intent", output.timings_ms)
@@ -71,7 +71,7 @@ class LangGraphWorkflowTest(unittest.TestCase):
 
         self.assertIn("search_documentation", nodes)
         self.assertNotIn("bug_tracking", nodes)
-        self.assertEqual(output.category, "invoice")
+        self.assertEqual(output.category, "automated_email")
         self.assertEqual(output.route, "search_documentation")
         self.assertEqual(output.delivery_status, "ready_to_send")
 

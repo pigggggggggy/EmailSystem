@@ -48,7 +48,7 @@ class ShortTermMemory:
         self._threads.move_to_end(thread_id)
         self._append(memory.email_ids, email.email_id)
         self._append(memory.recent_summaries, output.get("summary", ""))
-        self._append(memory.categories, output.get("category", "other"))
+        self._append(memory.categories, output.get("category", "automated_email"))
         while len(self._threads) > self.max_threads:
             self._threads.popitem(last=False)
 

@@ -3,7 +3,7 @@
 This project fine-tunes Qwen3-4B as a classification specialist first. The default training data merges the processed spam and phishing benchmarks, both projected into binary spam/ham labels, so the supervised target maps:
 
 - `spam` -> `{"category":"spam","priority":"normal","confidence":0.95}`
-- `ham` -> `{"category":"other","priority":"normal","confidence":0.90}`
+- `ham` -> `{"category":"automated_email","priority":"normal","confidence":0.90}` (binary-training fallback only)
 
 The output remains compatible with the existing `ClassifyEmailSkill` and LangGraph workflow.
 

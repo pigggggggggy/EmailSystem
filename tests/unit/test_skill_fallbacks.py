@@ -8,7 +8,7 @@ from email_system.skills import ClassifyEmailSkill, ExtractActionItemsSkill, Sum
 class LowConfidenceLLM:
     def generate(self, prompt: str, *, task: str, max_tokens: int = 512) -> GenerationResult:
         return GenerationResult(
-            text='{"category":"other","priority":"normal","confidence":0.0}',
+            text='{"category":"automated_email","priority":"normal","confidence":0.0}',
             input_tokens=10,
             output_tokens=10,
             latency_ms=1.0,
@@ -35,7 +35,7 @@ class SkillFallbackTest(unittest.TestCase):
 
     def test_classify_falls_back_on_empty_output(self):
         result = ClassifyEmailSkill().run(self.email, {}, self.llm)
-        self.assertEqual(result["category"], "other")
+        self.assertEqual(result["category"], "automated_email")
         self.assertEqual(result["priority"], "normal")
         self.assertIn("parse_error", result)
 

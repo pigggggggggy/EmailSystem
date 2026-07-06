@@ -195,7 +195,7 @@ def _record(
         "body_text": body,
         "attachments": [],
         "labels": {
-            "category": "spam" if is_phishing else "other",
+            **({"category": "spam"} if is_phishing else {}),
             "spam": is_phishing,
             "spam_label": "spam" if is_phishing else "ham",
             "phishing": is_phishing,

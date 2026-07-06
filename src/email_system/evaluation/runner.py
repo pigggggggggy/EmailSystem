@@ -23,7 +23,7 @@ def evaluate_predictions(gold_rows: list[dict], predictions: list[dict]) -> Eval
         if category is None:
             continue
         y_true.append(category)
-        y_pred.append(prediction.get("category", "other"))
+        y_pred.append(prediction.get("category", "automated_email"))
 
     total_skill_outputs = sum(len(prediction.get("timings_ms", {})) for prediction in predictions)
     total_skill_errors = sum(len(prediction.get("skill_errors", {})) for prediction in predictions)

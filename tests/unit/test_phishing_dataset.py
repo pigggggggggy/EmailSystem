@@ -36,7 +36,7 @@ class PhishingDatasetTest(unittest.TestCase):
         self.assertTrue(rows[0]["labels"]["phishing"])
         self.assertEqual(rows[0]["metadata"], {"urls": 2})
         self.assertEqual(rows[1]["labels"]["phishing_label"], "legitimate")
-        self.assertEqual(rows[1]["labels"]["category"], "other")
+        self.assertNotIn("category", rows[1]["labels"])
 
     def test_text_combined_file_uses_body_text(self):
         with tempfile.TemporaryDirectory() as directory:

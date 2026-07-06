@@ -232,7 +232,7 @@ python scripts/build_phishing_dataset.py \
   --output-dir data/processed/phishing_benchmark
 ```
 
-The generated records preserve `labels.phishing` and `labels.phishing_label`. For compatibility with the current classifier, phishing rows also map to `labels.category=spam` and legitimate rows map to `labels.category=other`. Generated files are local artifacts ignored by Git.
+The generated records preserve `labels.phishing` and `labels.phishing_label`. Phishing rows map to `labels.category=spam`; legitimate rows keep only their binary `spam_label=ham` and receive a multiclass category only after consensus labeling. Generated files are local artifacts ignored by Git.
 
 ## Build the spam benchmark
 

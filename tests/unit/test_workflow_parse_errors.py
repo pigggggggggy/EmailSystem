@@ -25,7 +25,7 @@ class WorkflowParseErrorsTest(unittest.TestCase):
 
         output = EmailAgentWorkflow(EmptyJsonLLM()).run(email)
 
-        self.assertEqual(output.category, "other")
+        self.assertEqual(output.category, "automated_email")
         self.assertIn("classify_intent", output.skill_errors)
         self.assertIn("summarize_email", output.skill_errors)
         self.assertIn("extract_action_items", output.skill_errors)
