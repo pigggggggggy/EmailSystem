@@ -4,7 +4,6 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from itertools import islice
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -26,9 +25,7 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
-    rows = iter_maildir_rows(args.maildir)
-    if args.limit is not None:
-        rows = islice(rows, args.limit)
+    rows = iter_maildir_rows(args.maildir, limit=args.limit, show_progress=True)
     splits, manifest = split_records(
         rows,
         seed=args.seed,

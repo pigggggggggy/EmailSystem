@@ -13,9 +13,18 @@ from pathlib import Path
 from typing import Iterable, Iterator
 
 
-def iter_maildir_rows(root: str | Path) -> Iterator[dict]:
+def iter_maildir_rows(
+    root: str | Path, *, limit: int | None = None, show_progress: bool = False
+) -> Iterator[dict]:
     root = Path(root)
-    for path in sorted(candidate for candidate in root.rglob("*") if candidate.is_file()):
+    paths = sorted(candidate for candidate in root.rglob("*") if candidate.is_file())
+    if limit is not None:
+        paths = paths[:limit]
+    if show_progress:
+        from tqdm.auto import tqdm
+
+        paths = tqdm(paths, desc="maildir", unit="file", dynamic_ncols=True)
+    for path in paths:
         try:
             message = BytesParser(policy=policy.default).parsebytes(path.read_bytes())
         except (OSError, ValueError):
