@@ -4,6 +4,7 @@ import unittest
 from training.train_lora_classification import (
     _configure_logical_epoch_strategies,
     _drop_reserved_labels_column,
+    _limit_dataset,
     _prepare_train_dataset,
 )
 
@@ -92,17 +93,19 @@ class LoraTrainingSamplingTest(unittest.TestCase):
         self.assertEqual(parsed._effective_epochs, 3.0)
         self.assertIsNone(parsed._steps_per_logical_epoch)
 
-    def test_balances_multiclass_categories_with_oversampling(self):
+    def test_soft_balances_multiclass_categories_with_oversampling(self):
         values = [
-            {"category_label": "spam", "id": index} for index in range(5)
+            {"category_label": "spam", "id": index} for index in range(100)
         ] + [
-            {"category_label": "invoice", "id": 5},
-            {"category_label": "support", "id": 6},
+            {"category_label": "support", "id": 100 + index} for index in range(25)
+        ] + [
+            {"category_label": "invoice", "id": 125},
         ]
         parsed = args(
             epochs=1.0,
-            max_train_samples=9,
+            max_train_samples=60,
             balance_category_labels=True,
+            category_balance_max_ratio=3.0,
         )
 
         sampled = _prepare_train_dataset(FakeSplit(values), parsed, concat)
@@ -110,7 +113,33 @@ class LoraTrainingSamplingTest(unittest.TestCase):
         counts = {}
         for item in sampled.values:
             counts[item["category_label"]] = counts.get(item["category_label"], 0) + 1
-        self.assertEqual(counts, {"invoice": 3, "spam": 3, "support": 3})
+        self.assertEqual(sum(counts.values()), 60)
+        self.assertGreater(counts["spam"], counts["support"])
+        self.assertGreater(counts["support"], counts["invoice"])
+        self.assertLessEqual(counts["spam"] / counts["invoice"], 3.0)
+
+    def test_validation_balancing_does_not_duplicate_rows(self):
+        values = [
+            {"category_label": "spam", "id": index} for index in range(20)
+        ] + [
+            {"category_label": "invoice", "id": 20 + index} for index in range(2)
+        ]
+
+        sampled = _limit_dataset(
+            FakeSplit(values),
+            20,
+            seed=7,
+            balance_category_labels=True,
+            category_balance_max_ratio=3.0,
+            allow_oversampling=False,
+        )
+
+        ids = [item["id"] for item in sampled.values]
+        counts = {}
+        for item in sampled.values:
+            counts[item["category_label"]] = counts.get(item["category_label"], 0) + 1
+        self.assertEqual(len(ids), len(set(ids)))
+        self.assertEqual(counts, {"invoice": 2, "spam": 6})
 
     def test_drops_reserved_labels_but_keeps_multiclass_target(self):
         split = FakeSplit(
