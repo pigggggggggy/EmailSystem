@@ -65,6 +65,13 @@ def main() -> None:
         rows, args.quality_limit, seed=args.seed, label_mode=resolved_quality_mode
     )
     speed_rows = select_benchmark_rows(rows, args.speed_limit, seed=args.seed)
+    if not args.skip_quality and not quality_rows:
+        raise SystemExit(
+            f"No quality rows selected from {args.input}. "
+            "For multiclass evaluation, check that the file is non-empty and each row has labels.category."
+        )
+    if not args.skip_speed and not speed_rows:
+        raise SystemExit(f"No speed rows selected from {args.input}. Check that the input file is non-empty.")
     run_dir = Path(args.run_dir) if args.run_dir else Path("outputs/runs") / datetime.now(timezone.utc).strftime(
         f"%Y%m%d_%H%M%S_{args.backend}_independent"
     )
