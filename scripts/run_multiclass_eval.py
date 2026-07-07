@@ -12,6 +12,9 @@ from run_independent_eval import main
 
 if __name__ == "__main__":
     provided = set(sys.argv[1:])
+    if "--eval-file" in provided:
+        index = sys.argv.index("--eval-file")
+        sys.argv[index] = "--input"
     if "--quality-mode" not in provided:
         sys.argv.extend(["--quality-mode", "multiclass"])
     if "--skip-speed" not in provided:
