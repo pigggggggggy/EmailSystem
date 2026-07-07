@@ -13,9 +13,12 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from email_system.agent import EmailAgentWorkflow
+from email_system.env import load_local_env
 from email_system.imap_mail import IMAPConfig, IMAPEmailClient
 from email_system.io import write_jsonl
 from email_system.models import build_llm_client
+
+load_local_env(ROOT)
 
 
 def parse_args() -> argparse.Namespace:

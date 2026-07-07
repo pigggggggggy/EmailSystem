@@ -18,10 +18,13 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "src"))
 
+from email_system.env import load_local_env
 from email_system.models.chat_prompts import PROMPT_VERSION, messages_for_task
 from email_system.skills.classify import VALID_CATEGORIES
 from email_system.skills.json_utils import parse_json_object
 from training.prepare_lora_classification_data import _email_prompt
+
+load_local_env(ROOT)
 
 DEFAULT_INPUT_DIRS = ("data/processed/spam_benchmark", "data/processed/phishing_benchmark", "data/processed/maildir_benchmark")
 DEFAULT_INPUT_WEIGHTS = (1.0, 1.0, 3.0)

@@ -2,6 +2,14 @@
 set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
+for env_file in .env.local .env; do
+  if [[ -f "$env_file" ]]; then
+    set -a
+    # shellcheck disable=SC1090
+    source "$env_file"
+    set +a
+  fi
+done
 RUN_NAME="${RUN_NAME:-multiclass_consensus_labeling}"
 LOG_FILE="${LOG_FILE:-outputs/logs/${RUN_NAME}.log}"
 PID_FILE="${PID_FILE:-outputs/pids/${RUN_NAME}.pid}"

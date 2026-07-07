@@ -4,6 +4,7 @@ import os
 import time
 import uuid
 from functools import lru_cache
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from fastapi import FastAPI, HTTPException
@@ -12,9 +13,12 @@ from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
 
 from email_system.agent import EmailAgentWorkflow
+from email_system.env import load_local_env
 from email_system.imap_mail import IMAPConfig, IMAPEmailClient
 from email_system.models import build_llm_client
 from email_system.schemas import Email
+
+load_local_env(Path(__file__).resolve().parents[2])
 
 
 class EmailProcessRequest(BaseModel):
