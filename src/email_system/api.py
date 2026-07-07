@@ -65,7 +65,7 @@ def index() -> str:
 
 @app.get("/api/health")
 def health() -> Dict[str, Any]:
-    workflow = _workflow()
+    workflow = _workflow_or_503()
     return {
         "status": "ok",
         "backend": _setting("BACKEND", "mock"),
@@ -89,7 +89,8 @@ async def process_email(request: EmailProcessRequest) -> EmailProcessResponse:
         body_text=request.body_text.strip(),
     )
     start = time.perf_counter()
-    output = await run_in_threadpool(_workflow().run, email)
+    workflow = _workflow_or_503()
+    output = await run_in_threadpool(workflow.run, email)
     elapsed_ms = (time.perf_counter() - start) * 1000
     return EmailProcessResponse(output=output.to_dict(), elapsed_ms=elapsed_ms)
 
@@ -120,7 +121,7 @@ async def process_recent_gmail(request: GmailRecentRequest = GmailRecentRequest(
             ),
         )
         emails = client.fetch_recent(limit=request.limit, search=request.search)
-        workflow = _workflow()
+        workflow = _workflow_or_503()
         rows = []
         for email in emails:
             output = workflow.run(email).to_dict()
@@ -145,6 +146,23 @@ async def process_recent_gmail(request: GmailRecentRequest = GmailRecentRequest(
     rows = await run_in_threadpool(run_batch)
     elapsed_ms = (time.perf_counter() - start) * 1000
     return GmailRecentResponse(emails=rows, elapsed_ms=elapsed_ms)
+
+
+def _workflow_or_503() -> EmailAgentWorkflow:
+    try:
+        return _workflow()
+    except HTTPException:
+        raise
+    except Exception as exc:
+        _workflow.cache_clear()
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                f"Model backend failed to start: {type(exc).__name__}: {exc}. "
+                "Check GPU memory, stop other GPU processes, choose another CUDA_VISIBLE_DEVICES, "
+                "or lower --gpu-memory-utilization."
+            ),
+        ) from exc
 
 
 @lru_cache(maxsize=1)
