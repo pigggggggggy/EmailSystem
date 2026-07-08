@@ -43,6 +43,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--tensor-parallel-size", type=int, default=1)
     parser.add_argument("--gpu-memory-utilization", type=float, default=0.9)
     parser.add_argument("--seed", type=int, default=20260702)
+    parser.add_argument("--task", action="append", choices=TASKS, default=None, help="Only distill selected task(s). Repeat to include multiple tasks.")
+    parser.add_argument("--retry-rejected-tasks", action="append", choices=TASKS, default=None, help="Ignore previous rejected rows for selected task(s), so they can be regenerated.")
+    parser.add_argument("--allow-config-change", action="store_true", help="Allow updating generation_config.json when refilling selected tasks in an existing output directory.")
     return parser.parse_args()
 
 
@@ -52,6 +55,8 @@ def main() -> None:
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     input_dirs = [Path(value) for value in (args.input_dir or DEFAULT_INPUT_DIRS)]
+    active_tasks = tuple(args.task or TASKS)
+    retry_rejected_tasks = set(args.retry_rejected_tasks or [])
     generation_config = {
         "prompt_version": PROMPT_VERSION,
         "teacher_model": args.model_path,
@@ -64,14 +69,14 @@ def main() -> None:
         "oversample_factor": args.oversample_factor,
         "seed": args.seed,
     }
-    prepare_generation_config(output_dir / "generation_config.json", generation_config)
+    prepare_generation_config(output_dir / "generation_config.json", generation_config, allow_change=args.allow_config_change)
 
     split_candidates = {}
     for split, limit in (("train", args.train_per_task), ("validation", args.validation_per_task)):
         rows = collect_rows(input_dirs, split)
         candidate_limit = math.ceil(limit * args.oversample_factor)
         selected = stable_sample(rows, limit=candidate_limit, seed=args.seed + (split == "validation"))
-        split_candidates[split] = build_candidates(selected, max_body_chars=args.max_body_chars)
+        split_candidates[split] = build_candidates(selected, max_body_chars=args.max_body_chars, tasks=active_tasks)
 
     client = VLLMClient(
         args.model_path,
@@ -91,6 +96,8 @@ def main() -> None:
             batch_size=args.batch_size,
             target_per_task=args.train_per_task if split == "train" else args.validation_per_task,
             training_max_length=args.training_max_length,
+            tasks=active_tasks,
+            retry_rejected_tasks=retry_rejected_tasks,
         )
 
     manifest = {
@@ -99,7 +106,7 @@ def main() -> None:
         "prompt_version": PROMPT_VERSION,
         "teacher_model": args.model_path,
         "source_dirs": [str(path) for path in input_dirs],
-        "tasks": list(TASKS),
+        "tasks": list(active_tasks),
         "task_max_tokens": TASK_MAX_TOKENS,
         "train_per_task": args.train_per_task,
         "validation_per_task": args.validation_per_task,
@@ -116,14 +123,19 @@ def main() -> None:
     print(json.dumps(manifest, ensure_ascii=False, indent=2), flush=True)
 
 
-def prepare_generation_config(path: Path, config: dict) -> None:
+def prepare_generation_config(path: Path, config: dict, *, allow_change: bool = False) -> None:
     if path.exists():
         existing = json.loads(path.read_text(encoding="utf-8"))
         if existing != config:
-            raise SystemExit(
-                f"Existing distillation configuration differs: {path}. "
-                "Use another --output-dir or restore the original arguments."
-            )
+            if not allow_change:
+                raise SystemExit(
+                    f"Existing distillation configuration differs: {path}. "
+                    "Use another --output-dir, restore the original arguments, or pass --allow-config-change "
+                    "when intentionally refilling selected tasks."
+                )
+            updated = dict(config)
+            updated["previous_generation_config"] = existing
+            path.write_text(json.dumps(updated, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         return
     path.write_text(json.dumps(config, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
@@ -145,12 +157,12 @@ def stable_sample(rows: Iterable[dict], *, limit: int, seed: int) -> list[dict]:
     return ordered[:limit] if limit > 0 else ordered
 
 
-def build_candidates(rows: Iterable[dict], *, max_body_chars: int) -> list[dict]:
+def build_candidates(rows: Iterable[dict], *, max_body_chars: int, tasks: Iterable[str] = TASKS) -> list[dict]:
     candidates = []
     for row in rows:
         email_id = str(row.get("email_id", ""))
         prompt = email_prompt(row, max_body_chars=max_body_chars)
-        for task in TASKS:
+        for task in tasks:
             candidates.append(
                 {
                     "id": f"{email_id}:{task}",
@@ -171,11 +183,15 @@ def generate_split(
     batch_size: int,
     target_per_task: int,
     training_max_length: int,
+    tasks: Iterable[str] = TASKS,
+    retry_rejected_tasks: set[str] | None = None,
 ) -> dict:
-    completed = load_completed_ids(output_path) | load_completed_ids(rejected_path)
+    task_names = tuple(tasks)
+    retry_rejected_tasks = retry_rejected_tasks or set()
+    completed = load_completed_ids(output_path) | load_completed_ids(rejected_path, exclude_tasks=retry_rejected_tasks)
     pending = [item for item in candidates if item["id"] not in completed]
     accepted_rows = list(read_jsonl(output_path)) if output_path.exists() else []
-    accepted_by_task = {task: sum(row.get("task") == task for row in accepted_rows) for task in TASKS}
+    accepted_by_task = {task: sum(row.get("task") == task for row in accepted_rows) for task in task_names}
     accepted_count = len(accepted_rows)
     rejected_count = count_jsonl(rejected_path)
     print(
@@ -185,7 +201,7 @@ def generate_split(
     )
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with output_path.open("a", encoding="utf-8") as accepted, rejected_path.open("a", encoding="utf-8") as rejected:
-        for task in TASKS:
+        for task in tasks:
             task_pending = [item for item in pending if item["task"] == task]
             max_tokens = TASK_MAX_TOKENS[task]
             if accepted_by_task[task] >= target_per_task:
@@ -343,10 +359,11 @@ def read_jsonl(path: Path) -> Iterable[dict]:
                 raise ValueError(f"invalid JSON at {path}:{line_number}: {exc}") from exc
 
 
-def load_completed_ids(path: Path) -> set[str]:
+def load_completed_ids(path: Path, *, exclude_tasks: set[str] | None = None) -> set[str]:
     if not path.exists():
         return set()
-    return {str(row["id"]) for row in read_jsonl(path)}
+    exclude_tasks = exclude_tasks or set()
+    return {str(row["id"]) for row in read_jsonl(path) if row.get("task") not in exclude_tasks}
 
 
 def count_jsonl(path: Path) -> int:
