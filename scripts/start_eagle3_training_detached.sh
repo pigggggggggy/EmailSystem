@@ -16,6 +16,12 @@ fi
 nohup setsid scripts/train_eagle3_online.sh >> "$LOG_FILE" 2>&1 &
 pid="$!"
 echo "$pid" > "$PID_FILE"
+sleep 2
+if ! kill -0 "$pid" 2>/dev/null; then
+  rm -f "$PID_FILE"
+  echo "Process exited during startup. Check log: $LOG_FILE" >&2
+  exit 1
+fi
 echo "Started EAGLE3 training: pid=$pid"
 echo "Log: $LOG_FILE"
 echo "Stop: scripts/kill_eagle3_training.sh $RUN_NAME"

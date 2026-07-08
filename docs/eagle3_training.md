@@ -149,3 +149,71 @@ tail -f outputs/logs/qwen3_4b_email_eagle3_mixed.log
 ```
 
 The mixed checkpoint is written under `outputs/eagle3/qwen3_4b_email_mixed`. It remains paired with `models/Qwen3-4B-email-classifier-ckpt1563` and does not replace the classification-only draft.
+
+## 7. Train a draft for a finetuned target model
+
+EAGLE3 drafts must be paired with the exact target model used during draft training. If the target model changes after LoRA merging or other finetuning, train a new draft instead of reusing an old draft.
+
+The default finetuned target is:
+
+```text
+models/Qwen3-4B-email-multiclass-v2
+```
+
+Generate mixed-task distillation data from that target:
+
+```bash
+conda activate vllm
+GPU_ID=3 scripts/start_eagle3_finetuned_distillation_detached.sh
+tail -f outputs/logs/qwen3_4b_email_multiclass_eagle3_distillation.log
+```
+
+Train a new EAGLE3 draft from the generated data:
+
+```bash
+conda activate eagle3
+scripts/start_eagle3_finetuned_training_detached.sh
+tail -f outputs/logs/qwen3_4b_email_multiclass_eagle3.log
+```
+
+Defaults:
+
+```text
+target: models/Qwen3-4B-email-multiclass-v2
+distillation data: data/finetune/eagle3_multiclass_v2_mixed
+draft output: outputs/eagle3/qwen3_4b_email_multiclass_v2
+GPUs: 0,1,2,3
+context length: 512
+```
+
+Override a different merged target:
+
+```bash
+TARGET_MODEL=/path/to/merged-finetuned-qwen \
+DISTILL_OUTPUT_DIR=data/finetune/eagle3_my_target_mixed \
+RUN_NAME=my_target_eagle3_distillation \
+scripts/start_eagle3_finetuned_distillation_detached.sh
+
+TARGET_MODEL=/path/to/merged-finetuned-qwen \
+TRAIN_DATA=data/finetune/eagle3_my_target_mixed/train.jsonl \
+EVAL_DATA=data/finetune/eagle3_my_target_mixed/validation.jsonl \
+OUTPUT_DIR=outputs/eagle3/my_target_eagle3 \
+RUN_NAME=my_target_eagle3 \
+scripts/start_eagle3_finetuned_training_detached.sh
+```
+
+Use the trained draft with the same target:
+
+```bash
+python scripts/run_independent_eval.py \
+  --backend vllm \
+  --model-path models/Qwen3-4B-email-multiclass-v2 \
+  --eagle3-model-path outputs/eagle3/qwen3_4b_email_multiclass_v2/checkpoint-<step> \
+  --speculative-tokens 3 \
+  --quality-mode multiclass \
+  --input data/finetune/multiclass_consensus_v3_maildir/validation.jsonl \
+  --quality-limit 100 \
+  --speed-limit 50 \
+  --run-dir outputs/runs/qwen3_4b_multiclass_v2_eagle3_smoke
+```
+

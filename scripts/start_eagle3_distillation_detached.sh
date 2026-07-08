@@ -24,6 +24,12 @@ fi
 nohup setsid env CUDA_VISIBLE_DEVICES="$GPU_ID" "${command[@]}" >> "$LOG_FILE" 2>&1 &
 pid="$!"
 echo "$pid" > "$PID_FILE"
+sleep 2
+if ! kill -0 "$pid" 2>/dev/null; then
+  rm -f "$PID_FILE"
+  echo "Process exited during startup. Check log: $LOG_FILE" >&2
+  exit 1
+fi
 echo "Started EAGLE3 distillation: pid=$pid gpu=$GPU_ID"
 echo "Log: $LOG_FILE"
 echo "Stop: scripts/kill_eagle3_distillation.sh $RUN_NAME"
