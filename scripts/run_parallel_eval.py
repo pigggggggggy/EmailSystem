@@ -369,7 +369,75 @@ def parallel_speed_metrics(samples: list[dict], batches: list[dict]) -> dict:
 
 
 def render_parallel_report(metrics: dict, args: argparse.Namespace) -> str:
-    return json.dumps(metrics, ensure_ascii=False, indent=2)
+    lines = [
+        "# Parallel vLLM Email Benchmark",
+        "",
+        f"- Model: `{args.model_path}`",
+        f"- EAGLE3 draft: `{args.eagle3_model_path or 'none'}`",
+        f"- Tensor parallel size: `{args.tensor_parallel_size}`",
+        f"- Batch size: `{args.batch_size}`",
+        "",
+    ]
+    classification = metrics.get("quality", {}).get("classification")
+    if classification:
+        lines.extend(
+            [
+                "## Classification Quality",
+                f"- Samples: {classification['samples']}",
+                f"- Accuracy: {classification['accuracy']:.4f}",
+                f"- Mode: {classification.get('quality_mode', 'binary')}",
+                f"- Macro F1: {classification['macro_f1']:.4f}",
+                f"- Parse success: {classification['parse_success_rate']:.4f}",
+                f"- Valid category: {classification['valid_category_rate']:.4f}",
+                f"- Low-confidence rate (<{classification['confidence_threshold']:.2f}): {classification['low_confidence_rate']:.4f}",
+                f"- Auto-accepted coverage: {classification['accepted_coverage']:.4f}",
+                f"- Auto-accepted accuracy: {classification['accepted_accuracy']:.4f}",
+                "",
+            ]
+        )
+        if classification.get("quality_mode", "binary") == "binary":
+            lines[-1:-1] = [
+                f"- Spam precision: {classification['spam_precision']:.4f}",
+                f"- Spam recall: {classification['spam_recall']:.4f}",
+            ]
+        else:
+            lines.extend(
+                [
+                    "### Per-class Quality",
+                    "",
+                    "| Category | Precision | Recall | F1 | Support |",
+                    "| --- | ---: | ---: | ---: | ---: |",
+                ]
+            )
+            for category, values in classification.get("per_class", {}).items():
+                lines.append(
+                    f"| {category} | {values['precision']:.4f} | {values['recall']:.4f} | "
+                    f"{values['f1']:.4f} | {values['support']} |"
+                )
+            lines.append("")
+
+    by_task = metrics.get("speed", {}).get("by_task", {})
+    if by_task:
+        lines.extend(
+            [
+                "## Batched Per-task Speed",
+                "",
+                "| Task | Requests | Batches | Batch p50 ms | Batch p95 ms | Amortized p50 ms | Req/s | Input tok/s | Output tok/s | Parse success |",
+                "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+            ]
+        )
+        for task, values in by_task.items():
+            batch_latency = values["batch_wall_latency_ms"]
+            request_latency = values["amortized_request_latency_ms"]
+            lines.append(
+                f"| {task} | {values['requests']} | {values['batches']} | "
+                f"{batch_latency['p50']:.2f} | {batch_latency['p95']:.2f} | "
+                f"{request_latency['p50']:.2f} | {values['requests_per_second']:.2f} | "
+                f"{values['input_tokens_per_second']:.2f} | {values['output_tokens_per_second']:.2f} | "
+                f"{values['parse_success_rate']:.4f} |"
+            )
+        lines.append("")
+    return "\n".join(lines)
 
 
 def _chunks(rows: list[dict], size: int) -> Iterable[list[dict]]:
