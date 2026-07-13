@@ -13,9 +13,12 @@ export DISTILL_ARGS="${DISTILL_ARGS:-\
 --train-per-task ${TRAIN_PER_TASK:-2500} \
 --validation-per-task ${VALIDATION_PER_TASK:-250} \
 --max-model-len ${MAX_MODEL_LEN:-2048} \
+--tensor-parallel-size ${TENSOR_PARALLEL_SIZE:-1} \
 --training-max-length ${TRAINING_MAX_LENGTH:-512} \
 --max-body-chars ${MAX_BODY_CHARS:-800} \
 --batch-size ${DISTILL_BATCH_SIZE:-32} \
+--torch-dtype ${TORCH_DTYPE:-auto} \
+${QUANTIZATION:+--quantization ${QUANTIZATION}} \
 --gpu-memory-utilization ${GPU_MEMORY_UTILIZATION:-0.75}}"
 
 exec "${ROOT_DIR}/scripts/start_eagle3_distillation_detached.sh"

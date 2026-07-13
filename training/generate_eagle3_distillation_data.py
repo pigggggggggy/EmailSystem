@@ -40,6 +40,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--batch-size", type=int, default=64)
     parser.add_argument("--oversample-factor", type=float, default=2.0)
     parser.add_argument("--torch-dtype", default="auto")
+    parser.add_argument("--quantization", default=None, help="Optional vLLM quantization mode for the teacher, for example awq_marlin.")
     parser.add_argument("--tensor-parallel-size", type=int, default=1)
     parser.add_argument("--gpu-memory-utilization", type=float, default=0.9)
     parser.add_argument("--seed", type=int, default=20260702)
@@ -66,6 +67,8 @@ def main() -> None:
         "max_body_chars": args.max_body_chars,
         "max_model_len": args.max_model_len,
         "training_max_length": args.training_max_length,
+        "torch_dtype": args.torch_dtype,
+        "quantization": args.quantization,
         "oversample_factor": args.oversample_factor,
         "seed": args.seed,
     }
@@ -84,6 +87,7 @@ def main() -> None:
         max_model_len=args.max_model_len,
         tensor_parallel_size=args.tensor_parallel_size,
         gpu_memory_utilization=args.gpu_memory_utilization,
+        quantization=args.quantization,
         enforce_eager=True,
     )
     counts = {}
@@ -113,6 +117,8 @@ def main() -> None:
         "max_body_chars": args.max_body_chars,
         "max_model_len": args.max_model_len,
         "training_max_length": args.training_max_length,
+        "torch_dtype": args.torch_dtype,
+        "quantization": args.quantization,
         "oversample_factor": args.oversample_factor,
         "seed": args.seed,
         "counts": counts,
