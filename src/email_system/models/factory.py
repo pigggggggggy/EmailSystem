@@ -18,6 +18,7 @@ def build_llm_client(
     tensor_parallel_size: int = 1,
     gpu_memory_utilization: float = 0.9,
     enforce_eager: bool = False,
+    quantization: str | None = None,
     speculative_model_path: str | Path | None = None,
     speculative_tokens: int = 3,
 ) -> LLMClient:
@@ -33,6 +34,7 @@ def build_llm_client(
             tensor_parallel_size=tensor_parallel_size,
             gpu_memory_utilization=gpu_memory_utilization,
             enforce_eager=enforce_eager,
+            quantization=quantization,
             speculative_model_path=speculative_model_path,
             speculative_tokens=speculative_tokens,
         )

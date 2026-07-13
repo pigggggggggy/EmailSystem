@@ -26,6 +26,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-model-len", type=int, default=8192)
     parser.add_argument("--tensor-parallel-size", type=int, default=1)
     parser.add_argument("--gpu-memory-utilization", type=float, default=0.75)
+    parser.add_argument("--quantization", default=None, help="Optional vLLM quantization mode, for example awq.")
     parser.add_argument("--no-enforce-eager", action="store_true")
     parser.add_argument("--reload", action="store_true")
     return parser.parse_args()
@@ -42,6 +43,8 @@ def main() -> None:
     os.environ["EMAILSYSTEM_API_MAX_MODEL_LEN"] = str(args.max_model_len)
     os.environ["EMAILSYSTEM_API_TENSOR_PARALLEL_SIZE"] = str(args.tensor_parallel_size)
     os.environ["EMAILSYSTEM_API_GPU_MEMORY_UTILIZATION"] = str(args.gpu_memory_utilization)
+    if args.quantization:
+        os.environ["EMAILSYSTEM_API_QUANTIZATION"] = args.quantization
     os.environ["EMAILSYSTEM_API_ENFORCE_EAGER"] = "false" if args.no_enforce_eager else "true"
 
     import uvicorn

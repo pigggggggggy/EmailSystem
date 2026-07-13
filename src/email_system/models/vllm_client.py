@@ -30,6 +30,7 @@ class VLLMClient:
         gpu_memory_utilization: float = 0.9,
         trust_remote_code: bool = True,
         enforce_eager: bool = False,
+        quantization: str | None = None,
         speculative_model_path: str | Path | None = None,
         speculative_tokens: int = 3,
     ) -> None:
@@ -52,6 +53,8 @@ class VLLMClient:
         }
         if max_model_len is not None:
             kwargs["max_model_len"] = max_model_len
+        if quantization:
+            kwargs["quantization"] = quantization
         if speculative_model_path is not None:
             kwargs.update(
                 spec_method="eagle3",

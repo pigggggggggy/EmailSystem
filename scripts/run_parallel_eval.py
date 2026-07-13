@@ -63,6 +63,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-model-len", type=int, default=8192)
     parser.add_argument("--tensor-parallel-size", type=int, default=1)
     parser.add_argument("--gpu-memory-utilization", type=float, default=0.75)
+    parser.add_argument("--quantization", default=None, help="Optional vLLM quantization mode, for example awq.")
     parser.add_argument(
         "--use-compiled-graphs",
         action="store_true",
@@ -107,6 +108,7 @@ def main() -> None:
         max_model_len=args.max_model_len,
         tensor_parallel_size=args.tensor_parallel_size,
         gpu_memory_utilization=args.gpu_memory_utilization,
+        quantization=args.quantization,
         enforce_eager=not args.use_compiled_graphs,
         speculative_model_path=args.eagle3_model_path,
         speculative_tokens=args.speculative_tokens,
