@@ -20,6 +20,9 @@ NUM_PROC="${NUM_PROC:-8}"
 SAVE_TOTAL_LIMIT="${SAVE_TOTAL_LIMIT:-2}"
 TARGET_ATTN_IMPLEMENTATION="${TARGET_ATTN_IMPLEMENTATION:-sdpa}"
 TARGET_TORCH_DTYPE="${TARGET_TORCH_DTYPE:-bfloat16}"
+EAGLE3_CC="${EAGLE3_CC:-${CC:-}}"
+EAGLE3_CXX="${EAGLE3_CXX:-${CXX:-}}"
+CLEAR_GPTQMODEL_MARLIN_CACHE="${CLEAR_GPTQMODEL_MARLIN_CACHE:-0}"
 EXTRA_ARGS="${EXTRA_ARGS:-}"
 DRY_RUN="${DRY_RUN:-0}"
 for required in "$ANGELSLIM_DIR/tools/train_eagle3_online.py" "$TARGET_MODEL/config.json" "$DRAFT_CONFIG" "$TRAIN_DATA" "$EVAL_DATA" "$DEEPSPEED_CONFIG"; do
@@ -45,6 +48,20 @@ if [[ -n "$EXTRA_ARGS" ]]; then
 fi
 printf 'Command: '; printf '%q ' "${command[@]}"; echo
 echo "Target attention implementation: $TARGET_ATTN_IMPLEMENTATION"
+if [[ -n "$EAGLE3_CC" ]]; then
+  export CC="$EAGLE3_CC"
+  echo "CC: $CC"
+  "$CC" --version | sed -n '1p'
+fi
+if [[ -n "$EAGLE3_CXX" ]]; then
+  export CXX="$EAGLE3_CXX"
+  echo "CXX: $CXX"
+  "$CXX" --version | sed -n '1p'
+fi
+if [[ "$CLEAR_GPTQMODEL_MARLIN_CACHE" == "1" ]]; then
+  rm -rf /root/.cache/gptqmodel/torch_extensions/marlin_fp16
+  echo "Cleared GPTQModel Marlin fp16 extension cache."
+fi
 if [[ "$DRY_RUN" == "1" ]]; then
   exit 0
 fi
