@@ -35,7 +35,7 @@ from email_system.skills.json_utils import ModelOutputParseError, parse_json_obj
 
 TASK_MAX_TOKENS = {
     "classify_email": 256,
-    "summarize_email": 256,
+    "summarize_email": 128,
     "extract_action_items": 256,
     "draft_reply": 512,
 }
