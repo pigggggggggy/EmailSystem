@@ -56,6 +56,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--speed-warmup", type=int, default=2)
     parser.add_argument("--speed-tasks", nargs="+", choices=TASKS, default=list(TASKS))
     parser.add_argument("--batch-size", type=int, default=16)
+    parser.add_argument(
+        "--continuous-batching",
+        action="store_true",
+        help=(
+            "Submit each speed task as one vLLM queue so finished requests can be "
+            "replaced by waiting requests. Quality evaluation remains statically batched."
+        ),
+    )
     parser.add_argument("--skip-quality", action="store_true")
     parser.add_argument("--skip-speed", action="store_true")
     parser.add_argument("--seed", type=int, default=20260629)
@@ -134,6 +142,7 @@ def main() -> None:
             batch_size=args.batch_size,
             warmup=args.speed_warmup,
             show_progress=True,
+            continuous_batching=args.continuous_batching,
         )
         write_jsonl(run_dir / "speed_samples.jsonl", samples)
         metrics["speed"] = speed_metrics
@@ -210,6 +219,7 @@ def run_batched_task_speed(
     batch_size: int,
     warmup: int,
     show_progress: bool,
+    continuous_batching: bool = False,
 ) -> tuple[list[dict], dict]:
     task_names = list(tasks)
     unknown = sorted(set(task_names) - set(TASKS))
@@ -224,7 +234,8 @@ def run_batched_task_speed(
         warmup_emails = [Email.from_dict(row) for row in rows[:warmup]]
         if warmup_emails:
             generate_batch(llm, warmup_emails, task=task, max_tokens=max_tokens)
-        for batch_index, batch in enumerate(_chunks(rows, batch_size), start=1):
+        task_batches = [rows] if continuous_batching else _chunks(rows, batch_size)
+        for batch_index, batch in enumerate(task_batches, start=1):
             emails = [Email.from_dict(row) for row in batch]
             results = generate_batch(llm, emails, task=task, max_tokens=max_tokens)
             batch_wall_ms = results[0]['batch_wall_ms'] if results else 0.0
@@ -241,6 +252,7 @@ def run_batched_task_speed(
                     'task': task,
                     'email_id': email.email_id,
                     'body_chars': len(email.body_text),
+                    'execution_mode': 'continuous_queue' if continuous_batching else 'static_batch',
                     'batch_size': result['batch_size'],
                     'batch_wall_latency_ms': result['batch_wall_ms'],
                     'amortized_wall_latency_ms': result['amortized_wall_ms'],
@@ -258,7 +270,14 @@ def run_batched_task_speed(
         task_samples = [sample for sample in samples if sample['task'] == task]
         task_batches = [sample for sample in batch_samples if sample['task'] == task]
         by_task[task] = parallel_speed_metrics(task_samples, task_batches)
-    return samples, {'samples_per_task': len(rows), 'warmup_per_task': warmup, 'batch_size': batch_size, 'by_task': by_task}
+    return samples, {
+        'samples_per_task': len(rows),
+        'warmup_per_task': warmup,
+        'batch_size': batch_size,
+        'execution_mode': 'continuous_queue' if continuous_batching else 'static_batches',
+        'queue_size': len(rows) if continuous_batching else batch_size,
+        'by_task': by_task,
+    }
 
 
 def generate_batch(llm, emails: list[Email], *, task: str, max_tokens: int) -> list[dict]:
@@ -420,6 +439,29 @@ def render_parallel_report(metrics: dict, args: argparse.Namespace) -> str:
 
     by_task = metrics.get("speed", {}).get("by_task", {})
     if by_task:
+        continuous_queue = metrics.get("speed", {}).get("execution_mode") == "continuous_queue"
+        if continuous_queue:
+            lines.extend(
+                [
+                    "## Continuous-queue Per-task Speed",
+                    "",
+                    "Each task is submitted as one vLLM queue. Queue wall time is end-to-end task throughput, not a fixed-size batch latency.",
+                    "",
+                    "| Task | Requests | Queue size | Queue wall ms | Amortized ms/request | Req/s | Input tok/s | Output tok/s | Parse success |",
+                    "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+                ]
+            )
+            for task, values in by_task.items():
+                queue_latency = values["batch_wall_latency_ms"]
+                request_latency = values["amortized_request_latency_ms"]
+                lines.append(
+                    f"| {task} | {values['requests']} | {values['batch_size_effective_mean']:.0f} | "
+                    f"{queue_latency['p50']:.2f} | {request_latency['p50']:.2f} | "
+                    f"{values['requests_per_second']:.2f} | {values['input_tokens_per_second']:.2f} | "
+                    f"{values['output_tokens_per_second']:.2f} | {values['parse_success_rate']:.4f} |"
+                )
+            lines.append("")
+            return "\n".join(lines)
         lines.extend(
             [
                 "## Batched Per-task Speed",
