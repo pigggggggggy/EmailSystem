@@ -71,6 +71,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-model-len", type=int, default=8192)
     parser.add_argument("--tensor-parallel-size", type=int, default=1)
     parser.add_argument("--gpu-memory-utilization", type=float, default=0.75)
+    parser.add_argument(
+        "--enable-dbo",
+        action="store_true",
+        help="Enable vLLM dual batch overlap to overlap prefill and decode work.",
+    )
     parser.add_argument("--quantization", default=None, help="Optional vLLM quantization mode, for example awq.")
     parser.add_argument(
         "--use-compiled-graphs",
@@ -109,6 +114,8 @@ def main() -> None:
     print(f"Loading vLLM model={args.model_path}", flush=True)
     if args.eagle3_model_path:
         print(f"Using EAGLE3 draft={args.eagle3_model_path} spec_tokens={args.speculative_tokens}", flush=True)
+    if args.enable_dbo:
+        print("Enabling vLLM dual batch overlap (DBO)", flush=True)
     llm = build_llm_client(
         "vllm",
         model_path=args.model_path,
@@ -116,6 +123,7 @@ def main() -> None:
         max_model_len=args.max_model_len,
         tensor_parallel_size=args.tensor_parallel_size,
         gpu_memory_utilization=args.gpu_memory_utilization,
+        enable_dbo=args.enable_dbo,
         quantization=args.quantization,
         enforce_eager=not args.use_compiled_graphs,
         speculative_model_path=args.eagle3_model_path,
