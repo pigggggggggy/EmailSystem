@@ -69,6 +69,18 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--seed", type=int, default=20260629)
     parser.add_argument("--torch-dtype", default="auto", choices=["auto", "float16", "bfloat16", "float32"])
     parser.add_argument("--max-model-len", type=int, default=8192)
+    parser.add_argument(
+        "--max-num-batched-tokens",
+        type=int,
+        default=None,
+        help="Optional vLLM scheduler token budget; defaults to vLLM's hardware-specific value.",
+    )
+    parser.add_argument(
+        "--max-num-seqs",
+        type=int,
+        default=None,
+        help="Optional vLLM maximum concurrent sequences; defaults to vLLM's hardware-specific value.",
+    )
     parser.add_argument("--tensor-parallel-size", type=int, default=1)
     parser.add_argument("--gpu-memory-utilization", type=float, default=0.75)
     parser.add_argument(
@@ -89,6 +101,10 @@ def main() -> None:
     args = parse_args()
     if args.batch_size <= 0:
         raise SystemExit("--batch-size must be positive")
+    if args.max_num_batched_tokens is not None and args.max_num_batched_tokens <= 0:
+        raise SystemExit("--max-num-batched-tokens must be positive")
+    if args.max_num_seqs is not None and args.max_num_seqs <= 0:
+        raise SystemExit("--max-num-seqs must be positive")
     if args.skip_quality and args.skip_speed:
         raise SystemExit("Both quality and speed phases are disabled.")
 
@@ -116,11 +132,20 @@ def main() -> None:
         print(f"Using EAGLE3 draft={args.eagle3_model_path} spec_tokens={args.speculative_tokens}", flush=True)
     if args.enable_dbo:
         print("Enabling vLLM dual batch overlap (DBO)", flush=True)
+    if args.max_num_batched_tokens is not None or args.max_num_seqs is not None:
+        print(
+            "Scheduler overrides: "
+            f"max_num_batched_tokens={args.max_num_batched_tokens or 'vLLM default'} "
+            f"max_num_seqs={args.max_num_seqs or 'vLLM default'}",
+            flush=True,
+        )
     llm = build_llm_client(
         "vllm",
         model_path=args.model_path,
         torch_dtype=args.torch_dtype,
         max_model_len=args.max_model_len,
+        max_num_batched_tokens=args.max_num_batched_tokens,
+        max_num_seqs=args.max_num_seqs,
         tensor_parallel_size=args.tensor_parallel_size,
         gpu_memory_utilization=args.gpu_memory_utilization,
         enable_dbo=args.enable_dbo,
@@ -404,6 +429,8 @@ def render_parallel_report(metrics: dict, args: argparse.Namespace) -> str:
         f"- Model: `{args.model_path}`",
         f"- EAGLE3 draft: `{args.eagle3_model_path or 'none'}`",
         f"- Tensor parallel size: `{args.tensor_parallel_size}`",
+        f"- Max batched tokens: `{args.max_num_batched_tokens or 'vLLM default'}`",
+        f"- Max concurrent sequences: `{args.max_num_seqs or 'vLLM default'}`",
         f"- Batch size: `{args.batch_size}`",
         "",
     ]

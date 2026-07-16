@@ -26,6 +26,8 @@ class VLLMClient:
         *,
         dtype: str = "auto",
         max_model_len: int | None = 8192,
+        max_num_batched_tokens: int | None = None,
+        max_num_seqs: int | None = None,
         tensor_parallel_size: int = 1,
         gpu_memory_utilization: float = 0.9,
         trust_remote_code: bool = True,
@@ -54,6 +56,10 @@ class VLLMClient:
         }
         if max_model_len is not None:
             kwargs["max_model_len"] = max_model_len
+        if max_num_batched_tokens is not None:
+            kwargs["max_num_batched_tokens"] = max_num_batched_tokens
+        if max_num_seqs is not None:
+            kwargs["max_num_seqs"] = max_num_seqs
         if enable_dbo:
             kwargs["enable_dbo"] = True
         if quantization:
