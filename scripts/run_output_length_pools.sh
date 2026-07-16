@@ -27,7 +27,7 @@ CUDA_VISIBLE_DEVICES="$SHORT_GPU" python scripts/run_parallel_eval.py \
   --speed-tasks classify_email extract_action_items \
   --max-model-len 2048 \
   --max-num-batched-tokens 4096 \
-  --max-num-seqs 128 \
+  --max-num-seqs 64 \
   --run-dir "$RUN_ROOT/short_pool" >"$RUN_ROOT/short_pool.log" 2>&1 &
 short_pid=$!
 
