@@ -10,6 +10,9 @@ SHORT_GPU="${SHORT_GPU:-0}"
 LONG_GPU="${LONG_GPU:-1}"
 SPEED_LIMIT="${SPEED_LIMIT:-200}"
 QUALITY_LIMIT="${QUALITY_LIMIT:-1000}"
+CACHE_ROOT="${VLLM_CACHE_ROOT:-$HOME/.cache/vllm}"
+SHORT_VLLM_CACHE_ROOT="${SHORT_VLLM_CACHE_ROOT:-$CACHE_ROOT/email_short_pool}"
+LONG_VLLM_CACHE_ROOT="${LONG_VLLM_CACHE_ROOT:-$CACHE_ROOT/email_long_pool}"
 COMMON_ARGS=(
   --model-path "$MODEL_PATH"
   --input "$INPUT"
@@ -22,7 +25,8 @@ COMMON_ARGS=(
 )
 
 mkdir -p "$RUN_ROOT"
-CUDA_VISIBLE_DEVICES="$SHORT_GPU" python scripts/run_parallel_eval.py \
+mkdir -p "$SHORT_VLLM_CACHE_ROOT" "$LONG_VLLM_CACHE_ROOT"
+VLLM_CACHE_ROOT="$SHORT_VLLM_CACHE_ROOT" CUDA_VISIBLE_DEVICES="$SHORT_GPU" python scripts/run_parallel_eval.py \
   "${COMMON_ARGS[@]}" \
   --speed-tasks classify_email extract_action_items \
   --max-model-len 2048 \
@@ -31,7 +35,7 @@ CUDA_VISIBLE_DEVICES="$SHORT_GPU" python scripts/run_parallel_eval.py \
   --run-dir "$RUN_ROOT/short_pool" >"$RUN_ROOT/short_pool.log" 2>&1 &
 short_pid=$!
 
-CUDA_VISIBLE_DEVICES="$LONG_GPU" python scripts/run_parallel_eval.py \
+VLLM_CACHE_ROOT="$LONG_VLLM_CACHE_ROOT" CUDA_VISIBLE_DEVICES="$LONG_GPU" python scripts/run_parallel_eval.py \
   "${COMMON_ARGS[@]}" \
   --skip-quality \
   --speed-tasks summarize_email draft_reply \
