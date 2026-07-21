@@ -36,6 +36,8 @@ class VLLMClient:
         quantization: str | None = None,
         speculative_model_path: str | Path | None = None,
         speculative_tokens: int = 3,
+        ngram_prompt_lookup_min: int | None = None,
+        ngram_prompt_lookup_max: int | None = None,
     ) -> None:
         try:
             from vllm import LLM, SamplingParams
@@ -64,12 +66,26 @@ class VLLMClient:
             kwargs["enable_dbo"] = True
         if quantization:
             kwargs["quantization"] = quantization
+        if speculative_model_path is not None and (
+            ngram_prompt_lookup_min is not None or ngram_prompt_lookup_max is not None
+        ):
+            raise ValueError("EAGLE3 and n-gram speculative decoding cannot be enabled together")
         if speculative_model_path is not None:
             kwargs.update(
                 spec_method="eagle3",
                 spec_model=str(speculative_model_path),
                 spec_tokens=speculative_tokens,
             )
+        elif ngram_prompt_lookup_min is not None or ngram_prompt_lookup_max is not None:
+            speculative_config = {
+                "method": "ngram",
+                "num_speculative_tokens": speculative_tokens,
+            }
+            if ngram_prompt_lookup_min is not None:
+                speculative_config["prompt_lookup_min"] = ngram_prompt_lookup_min
+            if ngram_prompt_lookup_max is not None:
+                speculative_config["prompt_lookup_max"] = ngram_prompt_lookup_max
+            kwargs["speculative_config"] = speculative_config
         self.llm = LLM(**kwargs)
         self.tokenizer = self.llm.get_tokenizer()
 

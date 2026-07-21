@@ -24,6 +24,8 @@ def build_llm_client(
     quantization: str | None = None,
     speculative_model_path: str | Path | None = None,
     speculative_tokens: int = 3,
+    ngram_prompt_lookup_min: int | None = None,
+    ngram_prompt_lookup_max: int | None = None,
 ) -> LLMClient:
     if backend == "mock":
         return MockLLMClient()
@@ -43,5 +45,7 @@ def build_llm_client(
             quantization=quantization,
             speculative_model_path=speculative_model_path,
             speculative_tokens=speculative_tokens,
+            ngram_prompt_lookup_min=ngram_prompt_lookup_min,
+            ngram_prompt_lookup_max=ngram_prompt_lookup_max,
         )
     raise ValueError(f"Unsupported backend: {backend}")

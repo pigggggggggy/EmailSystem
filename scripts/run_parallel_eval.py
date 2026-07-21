@@ -40,8 +40,6 @@ TASK_MAX_TOKENS = {
     "draft_reply": 512,
 }
 VALID_PRIORITIES = {"low", "normal", "high", "urgent"}
-
-
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Batch/parallel vLLM benchmark with optional EAGLE3.")
     parser.add_argument("--input", default="data/processed/spam_benchmark/test.jsonl")
@@ -49,6 +47,18 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--model-path", default="models/Qwen3-4B")
     parser.add_argument("--eagle3-model-path", default=None)
     parser.add_argument("--speculative-tokens", type=int, default=3)
+    parser.add_argument(
+        "--ngram-prompt-lookup-min",
+        type=int,
+        default=None,
+        help="Enable n-gram speculation with this minimum prompt lookup window; use TP1 only.",
+    )
+    parser.add_argument(
+        "--ngram-prompt-lookup-max",
+        type=int,
+        default=None,
+        help="Maximum n-gram prompt lookup window; enabling this makes n-gram an EAGLE3 alternative.",
+    )
     parser.add_argument("--quality-limit", type=int, default=None)
     parser.add_argument("--quality-mode", choices=["auto", "binary", "multiclass"], default="auto")
     parser.add_argument("--max-body-chars", type=int, default=6000)
@@ -116,6 +126,22 @@ def main() -> None:
         raise SystemExit("--max-num-batched-tokens must be positive")
     if args.max_num_seqs is not None and args.max_num_seqs <= 0:
         raise SystemExit("--max-num-seqs must be positive")
+    if args.ngram_prompt_lookup_min is not None and args.ngram_prompt_lookup_min <= 0:
+        raise SystemExit("--ngram-prompt-lookup-min must be positive")
+    if args.ngram_prompt_lookup_max is not None and args.ngram_prompt_lookup_max <= 0:
+        raise SystemExit("--ngram-prompt-lookup-max must be positive")
+    if (
+        args.ngram_prompt_lookup_min is not None
+        and args.ngram_prompt_lookup_max is not None
+        and args.ngram_prompt_lookup_min > args.ngram_prompt_lookup_max
+    ):
+        raise SystemExit("--ngram-prompt-lookup-min must be <= --ngram-prompt-lookup-max")
+    if args.eagle3_model_path and (
+        args.ngram_prompt_lookup_min is not None or args.ngram_prompt_lookup_max is not None
+    ):
+        raise SystemExit("Use either --eagle3-model-path or n-gram speculation, not both.")
+    if (args.ngram_prompt_lookup_min is not None or args.ngram_prompt_lookup_max is not None) and args.tensor_parallel_size != 1:
+        raise SystemExit("n-gram speculation is currently supported only with --tensor-parallel-size 1")
     if args.skip_quality and args.skip_speed:
         raise SystemExit("Both quality and speed phases are disabled.")
     args.task_max_tokens = _parse_task_max_tokens(args.task_max_tokens)
@@ -142,6 +168,14 @@ def main() -> None:
     print(f"Loading vLLM model={args.model_path}", flush=True)
     if args.eagle3_model_path:
         print(f"Using EAGLE3 draft={args.eagle3_model_path} spec_tokens={args.speculative_tokens}", flush=True)
+    elif args.ngram_prompt_lookup_min is not None or args.ngram_prompt_lookup_max is not None:
+        print(
+            "Using n-gram speculation "
+            f"lookup={args.ngram_prompt_lookup_min or args.ngram_prompt_lookup_max}"
+            f"..{args.ngram_prompt_lookup_max or args.ngram_prompt_lookup_min} "
+            f"spec_tokens={args.speculative_tokens}",
+            flush=True,
+        )
     if args.enable_dbo:
         print("Enabling vLLM dual batch overlap (DBO)", flush=True)
     if args.max_num_batched_tokens is not None or args.max_num_seqs is not None:
@@ -165,6 +199,8 @@ def main() -> None:
         enforce_eager=not args.use_compiled_graphs,
         speculative_model_path=args.eagle3_model_path,
         speculative_tokens=args.speculative_tokens,
+        ngram_prompt_lookup_min=args.ngram_prompt_lookup_min,
+        ngram_prompt_lookup_max=args.ngram_prompt_lookup_max,
     )
 
     metrics = {}
