@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Runs short- and long-output benchmark pools concurrently on separate TP1 GPUs.
+# Runs output-budget pools concurrently on separate TP1 GPUs.
 # This is an evaluation utility, not an HTTP load balancer for production traffic.
+# The default reply budget is intentionally short: measured reply P95 is 44 tokens.
+# Production requests that need a detailed reply should be routed explicitly to a
+# separate long-reply worker rather than reserving 512 tokens for every reply.
 MODEL_PATH="${MODEL_PATH:-models/Qwen3-4B-email-multitask-v3-maildir}"
 INPUT="${INPUT:-data/finetune/multiclass_consensus_v3_maildir/validation.jsonl}"
 RUN_ROOT="${RUN_ROOT:-outputs/runs/$(date -u +%Y%m%d_%H%M%S)_output_pools}"
@@ -10,6 +13,11 @@ SHORT_GPU="${SHORT_GPU:-0}"
 LONG_GPU="${LONG_GPU:-1}"
 SPEED_LIMIT="${SPEED_LIMIT:-200}"
 QUALITY_LIMIT="${QUALITY_LIMIT:-1000}"
+SHORT_REPLY_MAX_TOKENS="${SHORT_REPLY_MAX_TOKENS:-128}"
+SHORT_MAX_BATCHED_TOKENS="${SHORT_MAX_BATCHED_TOKENS:-4096}"
+SHORT_MAX_NUM_SEQS="${SHORT_MAX_NUM_SEQS:-64}"
+LONG_MAX_BATCHED_TOKENS="${LONG_MAX_BATCHED_TOKENS:-4096}"
+LONG_MAX_NUM_SEQS="${LONG_MAX_NUM_SEQS:-64}"
 CACHE_ROOT="${VLLM_CACHE_ROOT:-$HOME/.cache/vllm}"
 SHORT_VLLM_CACHE_ROOT="${SHORT_VLLM_CACHE_ROOT:-$CACHE_ROOT/email_short_pool}"
 LONG_VLLM_CACHE_ROOT="${LONG_VLLM_CACHE_ROOT:-$CACHE_ROOT/email_long_pool}"
@@ -28,20 +36,21 @@ mkdir -p "$RUN_ROOT"
 mkdir -p "$SHORT_VLLM_CACHE_ROOT" "$LONG_VLLM_CACHE_ROOT"
 VLLM_CACHE_ROOT="$SHORT_VLLM_CACHE_ROOT" CUDA_VISIBLE_DEVICES="$SHORT_GPU" python scripts/run_parallel_eval.py \
   "${COMMON_ARGS[@]}" \
-  --speed-tasks classify_email extract_action_items \
+  --speed-tasks classify_email extract_action_items draft_reply \
+  --task-max-tokens "draft_reply=$SHORT_REPLY_MAX_TOKENS" \
   --max-model-len 2048 \
-  --max-num-batched-tokens 4096 \
-  --max-num-seqs 64 \
+  --max-num-batched-tokens "$SHORT_MAX_BATCHED_TOKENS" \
+  --max-num-seqs "$SHORT_MAX_NUM_SEQS" \
   --run-dir "$RUN_ROOT/short_pool" >"$RUN_ROOT/short_pool.log" 2>&1 &
 short_pid=$!
 
 VLLM_CACHE_ROOT="$LONG_VLLM_CACHE_ROOT" CUDA_VISIBLE_DEVICES="$LONG_GPU" python scripts/run_parallel_eval.py \
   "${COMMON_ARGS[@]}" \
   --skip-quality \
-  --speed-tasks summarize_email draft_reply \
+  --speed-tasks summarize_email \
   --max-model-len 2048 \
-  --max-num-batched-tokens 8192 \
-  --max-num-seqs 64 \
+  --max-num-batched-tokens "$LONG_MAX_BATCHED_TOKENS" \
+  --max-num-seqs "$LONG_MAX_NUM_SEQS" \
   --run-dir "$RUN_ROOT/long_pool" >"$RUN_ROOT/long_pool.log" 2>&1 &
 long_pid=$!
 

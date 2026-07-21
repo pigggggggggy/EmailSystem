@@ -55,6 +55,17 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--speed-limit", type=int, default=100)
     parser.add_argument("--speed-warmup", type=int, default=2)
     parser.add_argument("--speed-tasks", nargs="+", choices=TASKS, default=list(TASKS))
+    parser.add_argument(
+        "--task-max-tokens",
+        action="append",
+        default=[],
+        metavar="TASK=TOKENS",
+        help=(
+            "Override the generation cap for a speed task; may be repeated. "
+            "For example: --task-max-tokens draft_reply=128. "
+            "Classification quality always uses its fixed cap."
+        ),
+    )
     parser.add_argument("--batch-size", type=int, default=16)
     parser.add_argument(
         "--continuous-batching",
@@ -107,6 +118,7 @@ def main() -> None:
         raise SystemExit("--max-num-seqs must be positive")
     if args.skip_quality and args.skip_speed:
         raise SystemExit("Both quality and speed phases are disabled.")
+    args.task_max_tokens = _parse_task_max_tokens(args.task_max_tokens)
 
     rows = truncate_body_text(read_jsonl(args.input), args.max_body_chars)
     quality_mode = resolve_quality_mode(rows, args.quality_mode)
@@ -176,6 +188,7 @@ def main() -> None:
             warmup=args.speed_warmup,
             show_progress=True,
             continuous_batching=args.continuous_batching,
+            task_max_tokens=args.task_max_tokens,
         )
         write_jsonl(run_dir / "speed_samples.jsonl", samples)
         metrics["speed"] = speed_metrics
@@ -253,6 +266,7 @@ def run_batched_task_speed(
     warmup: int,
     show_progress: bool,
     continuous_batching: bool = False,
+    task_max_tokens: dict[str, int] | None = None,
 ) -> tuple[list[dict], dict]:
     task_names = list(tasks)
     unknown = sorted(set(task_names) - set(TASKS))
@@ -263,7 +277,7 @@ def run_batched_task_speed(
     samples = []
     batch_samples = []
     for task in task_names:
-        max_tokens = TASK_MAX_TOKENS[task]
+        max_tokens = (task_max_tokens or {}).get(task, TASK_MAX_TOKENS[task])
         warmup_emails = [Email.from_dict(row) for row in rows[:warmup]]
         if warmup_emails:
             generate_batch(llm, warmup_emails, task=task, max_tokens=max_tokens)
@@ -309,8 +323,25 @@ def run_batched_task_speed(
         'batch_size': batch_size,
         'execution_mode': 'continuous_queue' if continuous_batching else 'static_batches',
         'queue_size': len(rows) if continuous_batching else batch_size,
+        'task_max_tokens': {task: (task_max_tokens or {}).get(task, TASK_MAX_TOKENS[task]) for task in task_names},
         'by_task': by_task,
     }
+
+
+def _parse_task_max_tokens(values: list[str]) -> dict[str, int]:
+    overrides: dict[str, int] = {}
+    for value in values:
+        task, separator, raw_tokens = value.partition("=")
+        if not separator or task not in TASKS:
+            raise SystemExit(f"Invalid --task-max-tokens {value!r}; expected TASK=TOKENS for: {', '.join(TASKS)}")
+        try:
+            max_tokens = int(raw_tokens)
+        except ValueError as exc:
+            raise SystemExit(f"Invalid --task-max-tokens {value!r}; token count must be an integer") from exc
+        if max_tokens <= 0:
+            raise SystemExit(f"Invalid --task-max-tokens {value!r}; token count must be positive")
+        overrides[task] = max_tokens
+    return overrides
 
 
 def generate_batch(llm, emails: list[Email], *, task: str, max_tokens: int) -> list[dict]:

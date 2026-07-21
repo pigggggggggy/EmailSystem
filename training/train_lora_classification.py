@@ -73,7 +73,7 @@ def main() -> None:
     _assert_input(args.train_file)
     _assert_input(args.validation_file)
 
-    from datasets import concatenate_datasets, load_dataset
+    from datasets import Dataset, concatenate_datasets
     from peft import LoraConfig, TaskType, get_peft_model, prepare_model_for_kbit_training
     from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig, TrainingArguments
     import torch
@@ -117,10 +117,13 @@ def main() -> None:
     model = get_peft_model(model, lora_config)
     model.print_trainable_parameters()
 
-    dataset = load_dataset(
-        "json",
-        data_files={"train": args.train_file, "validation": args.validation_file},
-    )
+    # Training needs only the chat messages and category for sampling. Project
+    # JSONL rows before Arrow inference so optional provenance fields from data
+    # augmentation cannot make real and synthetic rows use incompatible schemas.
+    dataset = {
+        "train": _load_projected_jsonl(args.train_file, Dataset),
+        "validation": _load_projected_jsonl(args.validation_file, Dataset),
+    }
     dataset["train"] = _prepare_train_dataset(dataset["train"], args, concatenate_datasets)
     dataset["validation"] = _limit_dataset(
         dataset["validation"],
@@ -187,6 +190,28 @@ def _category_counts(split) -> dict[str, int]:
         if category:
             counts[str(category)] = counts.get(str(category), 0) + 1
     return dict(sorted(counts.items()))
+
+
+def _load_projected_jsonl(path: str, dataset_cls):
+    rows = []
+    with Path(path).open("r", encoding="utf-8") as handle:
+        for line_number, line in enumerate(handle, start=1):
+            if not line.strip():
+                continue
+            try:
+                row = json.loads(line)
+            except json.JSONDecodeError as exc:
+                raise ValueError(f"Invalid JSON at {path}:{line_number}: {exc}") from exc
+            messages = row.get("messages")
+            if not isinstance(messages, list) or not messages:
+                raise ValueError(f"Missing non-empty messages at {path}:{line_number}")
+            category = row.get("category_label") or (row.get("labels") or {}).get("category")
+            if not category:
+                raise ValueError(f"Missing category_label or labels.category at {path}:{line_number}")
+            rows.append({"messages": messages, "category_label": str(category)})
+    if not rows:
+        raise ValueError(f"No training rows found in {path}")
+    return dataset_cls.from_list(rows)
 
 
 def _drop_reserved_labels_column(split):
