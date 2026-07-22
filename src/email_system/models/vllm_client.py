@@ -38,6 +38,7 @@ class VLLMClient:
         speculative_tokens: int = 3,
         ngram_prompt_lookup_min: int | None = None,
         ngram_prompt_lookup_max: int | None = None,
+        collect_speculative_metrics: bool = False,
     ) -> None:
         try:
             from vllm import LLM, SamplingParams
@@ -56,6 +57,10 @@ class VLLMClient:
             "trust_remote_code": trust_remote_code,
             "enforce_eager": enforce_eager,
         }
+        if collect_speculative_metrics:
+            # Offline LLM() disables stat collection by default. Enable the
+            # scheduler counters needed to report exact speculative acceptance.
+            kwargs["disable_log_stats"] = False
         if max_model_len is not None:
             kwargs["max_model_len"] = max_model_len
         if max_num_batched_tokens is not None:

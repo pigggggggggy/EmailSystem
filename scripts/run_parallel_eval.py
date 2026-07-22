@@ -201,6 +201,7 @@ def main() -> None:
         speculative_tokens=args.speculative_tokens,
         ngram_prompt_lookup_min=args.ngram_prompt_lookup_min,
         ngram_prompt_lookup_max=args.ngram_prompt_lookup_max,
+        collect_speculative_metrics=_speculative_decoding_enabled(args),
     )
 
     metrics = {}
@@ -329,6 +330,7 @@ def run_batched_task_speed(
                 'wall_latency_ms': batch_wall_ms,
                 'input_tokens': sum(item['input_tokens'] for item in results),
                 'output_tokens': sum(item['output_tokens'] for item in results),
+                'speculative_metrics': results[0].get('speculative_metrics') if results else None,
             })
             for email, result in zip(emails, results):
                 samples.append({
@@ -380,9 +382,73 @@ def _parse_task_max_tokens(values: list[str]) -> dict[str, int]:
     return overrides
 
 
+def _speculative_decoding_enabled(args: argparse.Namespace) -> bool:
+    return bool(
+        args.eagle3_model_path
+        or args.ngram_prompt_lookup_min is not None
+        or args.ngram_prompt_lookup_max is not None
+    )
+
+
+def _speculative_counter_snapshot(llm) -> dict | None:
+    """Read vLLM's scheduler counters without depending on a private class."""
+    engine = getattr(getattr(llm, "llm", None), "llm_engine", None)
+    get_metrics = getattr(engine, "get_metrics", None)
+    if not callable(get_metrics):
+        return None
+    try:
+        metrics = get_metrics()
+    except Exception:
+        return None
+
+    counters = {"drafts": 0, "draft_tokens": 0, "accepted_tokens": 0}
+    accepted_per_position: list[int] = []
+    metric_names = {
+        "vllm:spec_decode_num_drafts": "drafts",
+        "vllm:spec_decode_num_draft_tokens": "draft_tokens",
+        "vllm:spec_decode_num_accepted_tokens": "accepted_tokens",
+    }
+    found = False
+    for metric in metrics:
+        name = getattr(metric, "name", None)
+        if name in metric_names:
+            counters[metric_names[name]] += int(getattr(metric, "value", 0))
+            found = True
+        elif name == "vllm:spec_decode_num_accepted_tokens_per_pos":
+            values = [int(value) for value in getattr(metric, "values", [])]
+            if len(accepted_per_position) < len(values):
+                accepted_per_position.extend([0] * (len(values) - len(accepted_per_position)))
+            for index, value in enumerate(values):
+                accepted_per_position[index] += value
+            found = True
+    if not found:
+        return None
+    return {**counters, "accepted_per_position": accepted_per_position}
+
+
+def _speculative_counter_delta(before: dict | None, after: dict | None) -> dict | None:
+    if before is None or after is None:
+        return None
+    positions = max(len(before["accepted_per_position"]), len(after["accepted_per_position"]))
+    delta = {
+        key: max(0, int(after[key]) - int(before[key]))
+        for key in ("drafts", "draft_tokens", "accepted_tokens")
+    }
+    delta["accepted_per_position"] = [
+        max(
+            0,
+            (after["accepted_per_position"][index] if index < len(after["accepted_per_position"]) else 0)
+            - (before["accepted_per_position"][index] if index < len(before["accepted_per_position"]) else 0),
+        )
+        for index in range(positions)
+    ]
+    return delta
+
+
 def generate_batch(llm, emails: list[Email], *, task: str, max_tokens: int) -> list[dict]:
-    prompts = []
     input_token_counts = []
+
+    prompts = []
     for email in emails:
         prompt = email.to_prompt_text()
         if task == "draft_reply":
@@ -395,9 +461,11 @@ def generate_batch(llm, emails: list[Email], *, task: str, max_tokens: int) -> l
         input_token_counts.append(len(token_ids))
 
     sampling = llm.sampling_params_cls(temperature=0.0, max_tokens=max_tokens)
+    speculative_before = _speculative_counter_snapshot(llm)
     start = time.perf_counter()
     outputs = llm.llm.generate(prompts, sampling, use_tqdm=False)
     batch_wall_ms = (time.perf_counter() - start) * 1000
+    speculative_delta = _speculative_counter_delta(speculative_before, _speculative_counter_snapshot(llm))
     batch_size = len(outputs)
     amortized = batch_wall_ms / batch_size if batch_size else 0.0
     results = []
@@ -412,6 +480,7 @@ def generate_batch(llm, emails: list[Email], *, task: str, max_tokens: int) -> l
                 "batch_size": batch_size,
                 "batch_wall_ms": batch_wall_ms,
                 "amortized_wall_ms": amortized,
+                "speculative_metrics": speculative_delta,
             }
         )
     return results
@@ -468,13 +537,55 @@ def parse_error_for_task(task: str, text: str) -> str | None:
     return None
 
 
+def _aggregate_speculative_metrics(batches: list[dict]) -> dict | None:
+    deltas = [row.get("speculative_metrics") for row in batches]
+    deltas = [delta for delta in deltas if delta is not None]
+    if not deltas:
+        return None
+    drafted_tokens = sum(int(delta["draft_tokens"]) for delta in deltas)
+    accepted_tokens = sum(int(delta["accepted_tokens"]) for delta in deltas)
+    drafts = sum(int(delta["drafts"]) for delta in deltas)
+    position_count = max((len(delta["accepted_per_position"]) for delta in deltas), default=0)
+    accepted_per_position = [
+        sum(
+            int(delta["accepted_per_position"][index])
+            if index < len(delta["accepted_per_position"])
+            else 0
+            for delta in deltas
+        )
+        for index in range(position_count)
+    ]
+    return {
+        "draft_rounds": drafts,
+        "drafted_tokens": drafted_tokens,
+        "accepted_tokens": accepted_tokens,
+        "draft_acceptance_rate": accepted_tokens / drafted_tokens if drafted_tokens else None,
+        "mean_acceptance_length": 1 + accepted_tokens / drafts if drafts else None,
+        "acceptance_rate_by_position": [
+            accepted / drafts if drafts else None for accepted in accepted_per_position
+        ],
+    }
+
+
+def _speculative_tokens_cell(values: dict) -> str:
+    stats = values.get("speculative_decoding")
+    if not stats:
+        return "--"
+    return f"{stats['drafted_tokens']} / {stats['accepted_tokens']}"
+
+
+def _speculative_hit_rate_cell(values: dict) -> str:
+    stats = values.get("speculative_decoding")
+    rate = stats.get("draft_acceptance_rate") if stats else None
+    return f"{rate:.2%}" if rate is not None else "--"
 def parallel_speed_metrics(samples: list[dict], batches: list[dict]) -> dict:
     total_wall_seconds = sum(float(row["wall_latency_ms"]) for row in batches) / 1000
+
     input_tokens = sum(int(row["input_tokens"]) for row in samples)
     output_tokens = sum(int(row["output_tokens"]) for row in samples)
     amortized_latencies = [float(row["amortized_wall_latency_ms"]) for row in samples]
     batch_latencies = [float(row["wall_latency_ms"]) for row in batches]
-    return {
+    result = {
         "requests": len(samples),
         "batches": len(batches),
         "batch_size_effective_mean": (sum(row["batch_size"] for row in batches) / len(batches)) if batches else 0.0,
@@ -487,6 +598,10 @@ def parallel_speed_metrics(samples: list[dict], batches: list[dict]) -> dict:
         "output_tokens_per_second": output_tokens / total_wall_seconds if total_wall_seconds else 0.0,
         "parse_success_rate": _success_rate(row.get("parse_error") for row in samples),
     }
+    speculative_metrics = _aggregate_speculative_metrics(batches)
+    if speculative_metrics is not None:
+        result["speculative_decoding"] = speculative_metrics
+    return result
 
 
 def render_parallel_report(metrics: dict, args: argparse.Namespace) -> str:
@@ -548,9 +663,10 @@ def render_parallel_report(metrics: dict, args: argparse.Namespace) -> str:
                     "## Continuous-queue Per-task Speed",
                     "",
                     "Each task is submitted as one vLLM queue. Queue wall time is end-to-end task throughput, not a fixed-size batch latency.",
+                    "Draft / accepted and hit rate are vLLM scheduler counters: accepted draft tokens divided by drafted tokens.",
                     "",
-                    "| Task | Requests | Queue size | Queue wall ms | Amortized ms/request | Req/s | Input tok/s | Output tok/s | Parse success |",
-                    "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+                    "| Task | Requests | Queue size | Queue wall ms | Amortized ms/request | Req/s | Input tok/s | Output tok/s | Draft / accepted | Hit rate | Parse success |",
+                    "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
                 ]
             )
             for task, values in by_task.items():
@@ -560,7 +676,7 @@ def render_parallel_report(metrics: dict, args: argparse.Namespace) -> str:
                     f"| {task} | {values['requests']} | {values['batch_size_effective_mean']:.0f} | "
                     f"{queue_latency['p50']:.2f} | {request_latency['p50']:.2f} | "
                     f"{values['requests_per_second']:.2f} | {values['input_tokens_per_second']:.2f} | "
-                    f"{values['output_tokens_per_second']:.2f} | {values['parse_success_rate']:.4f} |"
+                    f"{values['output_tokens_per_second']:.2f} | {_speculative_tokens_cell(values)} | {_speculative_hit_rate_cell(values)} | {values['parse_success_rate']:.4f} |"
                 )
             lines.append("")
             return "\n".join(lines)
@@ -568,8 +684,8 @@ def render_parallel_report(metrics: dict, args: argparse.Namespace) -> str:
             [
                 "## Batched Per-task Speed",
                 "",
-                "| Task | Requests | Batches | Batch p50 ms | Batch p95 ms | Amortized p50 ms | Req/s | Input tok/s | Output tok/s | Parse success |",
-                "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+                "| Task | Requests | Batches | Batch p50 ms | Batch p95 ms | Amortized p50 ms | Req/s | Input tok/s | Output tok/s | Draft / accepted | Hit rate | Parse success |",
+                "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
             ]
         )
         for task, values in by_task.items():
@@ -580,7 +696,7 @@ def render_parallel_report(metrics: dict, args: argparse.Namespace) -> str:
                 f"{batch_latency['p50']:.2f} | {batch_latency['p95']:.2f} | "
                 f"{request_latency['p50']:.2f} | {values['requests_per_second']:.2f} | "
                 f"{values['input_tokens_per_second']:.2f} | {values['output_tokens_per_second']:.2f} | "
-                f"{values['parse_success_rate']:.4f} |"
+                f"{_speculative_tokens_cell(values)} | {_speculative_hit_rate_cell(values)} | {values['parse_success_rate']:.4f} |"
             )
         lines.append("")
     return "\n".join(lines)
